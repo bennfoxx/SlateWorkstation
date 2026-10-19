@@ -164,6 +164,7 @@ _TPL_006 = os.path.join(_APP_DIR, "sj_Slates From Spreadsheet_Template_006.aep")
 _TPL_005 = os.path.join(_APP_DIR, "sj_Slates From Spreadsheet_Template_005.aep")
 DEFAULT_TEMPLATE_AEP = _TPL_006 if os.path.exists(_TPL_006) else _TPL_005
 DEFAULT_SPREADSHEET_XLSX = os.path.join(_APP_DIR, "Slates From Spreadsheet_Template_001.xlsx")
+DEFAULT_AGENCY = "MARTIN*"
 METADATA_FILETYPES = [
     ("Spreadsheet & Metadata Files", "*.xlsx *.tsv *.csv *.txt"),
     ("Excel Workbook (.xlsx)", "*.xlsx"),
@@ -241,7 +242,7 @@ def normalize_slate_row(raw_row):
         comp_name = f"{ad_id}_{title}".strip("_")
 
     client = pick("client", "brand", "advertiser")
-    agency = pick("agency", "the martin agency")
+    agency = pick("agency", "the martin agency", default=DEFAULT_AGENCY) or DEFAULT_AGENCY
     nfa = pick("nfa")
     trt = pick("trt", "duration", "length", "time")
     date_val = pick("day", "date", "air_date", "ship_date")
@@ -1349,7 +1350,7 @@ class SuperJoyWorkstation:
         self._loading_row = False
 
         # Shared campaign fields (filled in by user) + per-spot fields (pulled from master video filenames or spreadsheet)
-        self.f_agency = tk.StringVar()
+        self.f_agency = tk.StringVar(value=DEFAULT_AGENCY)
         self.f_client = tk.StringVar()
         self.f_title = tk.StringVar()
         self.f_id = tk.StringVar()
@@ -2273,7 +2274,7 @@ class SuperJoyWorkstation:
         else:
             flame_val = shared["flame"]
         return {
-            "agency": shared["agency"] or prev.get("agency", ""),
+            "agency": shared["agency"] or prev.get("agency", "") or DEFAULT_AGENCY,
             "client": shared["client"] or prev.get("client", ""),
             "title": title,
             "name": prev.get("name") or title,
