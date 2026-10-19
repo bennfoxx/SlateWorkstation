@@ -1396,6 +1396,7 @@ class SuperJoyWorkstation:
         self.marry_csv_path.trace_add("write", lambda *_: self.update_marry_preview())
         self.output_mode_var.trace_add("write", lambda *_: self._on_output_mode_changed())
         self.auto_transcode_var.trace_add("write", lambda *_: self.update_asset_badges())
+        self.auto_transcode_var.trace_add("write", lambda *_: self._on_output_mode_changed())
         self.update_asset_badges()
         if self.tsv_path.get().strip():
             self.update_file_preview()
@@ -2172,7 +2173,11 @@ class SuperJoyWorkstation:
             self.output_mode_hint.config(
                 text=".mov only \u2192 single output folder (No Video)"
                 if slates_only
-                else "SLATED & UNSLATED (ProRes + h264)",
+                else (
+                    "SLATED & UNSLATED (ProRes + h264)"
+                    if self.auto_transcode_var.get()
+                    else "SLATED (ProRes .mov only)"
+                ),
                 fg=ACCENT_YELLOW if slates_only else TEXT_MUTED,
             )
         if str(self.btn_run["state"]) == "normal":
