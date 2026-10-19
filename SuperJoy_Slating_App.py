@@ -419,7 +419,7 @@ def ensure_ame_running(wait_seconds=75):
     """Launch Adobe Media Encoder (if needed) and give Dynamic Link time to come up,
     so After Effects' queueInAME doesn't fail with 'Failed to connect to Adobe Media Encoder'."""
     def running():
-        r = subprocess.run(["pgrep", "-f", "Adobe Media Encoder.*[.]app/Contents/MacOS/"], capture_output=True)
+        r = subprocess.run(["pgrep", "-f", "[.]app/Contents/MacOS/Adobe Media Encoder [0-9]+$"], capture_output=True)
         return r.returncode == 0
     try:
         if running():
@@ -436,6 +436,106 @@ def ensure_ame_running(wait_seconds=75):
     except Exception:
         pass
     return False
+
+
+def wrap_jsx_with_status(jsx_body, status_path):
+    """Wrap a generated JSX so any error is caught and a status file is always written
+    (osascript returns success even when After Effects throws, so Python reads this file)."""
+    return (
+        "var __SJ_STATUS = {ok: false, queued: false, rqItems: 0, error: \"\"};\n"
+        "function __sjWriteStatus() {\n"
+        "  try {\n"
+        "    var f = new File(" + json.dumps(status_path) + "); f.encoding = 'UTF-8'; f.open('w');\n"
+        "    f.write('ok=' + (__SJ_STATUS.ok ? 1 : 0) + '\\nqueued=' + (__SJ_STATUS.queued ? 1 : 0)"
+        " + '\\nrq_items=' + __SJ_STATUS.rqItems + '\\nerror=' + String(__SJ_STATUS.error).replace(/[\\r\\n]+/g, ' ') + '\\n');\n"
+        "    f.close();\n"
+        "  } catch (eW) {}\n"
+        "}\n"
+        "try {\n"
+        "  var __sec = 'Pref_SCRIPTING_FILE_NETWORK_SECURITY';\n"
+        "  if (app.preferences.getPrefAsLong('Main Pref Section', __sec, PREFType.PREF_Type_MACHINE_INDEPENDENT) !== 1) {\n"
+        "    app.preferences.savePrefAsLong(1, 'Main Pref Section', __sec, PREFType.PREF_Type_MACHINE_INDEPENDENT);\n"
+        "    app.preferences.saveToDisk();\n"
+        "  }\n"
+        "} catch (ePref) {}\n"
+        "try { app.beginSuppressDialogs(); } catch (eSD) {}\n"
+        "try {\n" + jsx_body + "\n"
+        "  if (!__SJ_STATUS.error) { __SJ_STATUS.ok = true; }\n"
+        "} catch (eMain) {\n"
+        "  __SJ_STATUS.error = String(eMain) + (eMain.line ? ' (script line ' + eMain.line + ')' : '');\n"
+        "  try { app.endUndoGroup(); } catch (eU) {}\n"
+        "}\n"
+        "try { app.endSuppressDialogs(false); } catch (eSE) {}\n"
+        "__sjWriteStatus();\n"
+    )
+
+
+def clear_jsx_status(jsx_path):
+    try:
+        os.remove(jsx_path + ".status")
+    except OSError:
+        pass
+
+
+def verify_jsx_status(jsx_path, expect_queue=True):
+    """Raise RuntimeError unless the After Effects script reported success and queued items in AME."""
+    sp = jsx_path + ".status"
+    if not os.path.isfile(sp):
+        raise RuntimeError("After Effects did not finish the script (no status reported). Check for open dialogs in After Effects.")
+    info = {}
+    with open(sp, "r", encoding="utf-8") as f:
+        for line in f:
+            if "=" in line:
+                k, v = line.rstrip("\n").split("=", 1)
+                info[k] = v
+    if info.get("ok") != "1" or info.get("error"):
+        raise RuntimeError(info.get("error") or "After Effects script failed.")
+    if expect_queue and (info.get("queued") != "1" or int(info.get("rq_items", "0") or 0) == 0):
+        raise RuntimeError("Nothing was queued in Adobe Media Encoder (render queue empty or AME unreachable).")
+    return info
+
+
+AE_SCRIPT_PREF_KEY = "Pref_SCRIPTING_FILE_NETWORK_SECURITY"
+
+
+def _ae_prefs_file():
+    """Newest After Effects preferences file (e.g. ~/Library/Preferences/Adobe/After Effects/26.5/...Prefs.txt)."""
+    base = os.path.expanduser("~/Library/Preferences/Adobe/After Effects")
+    cands = glob.glob(os.path.join(base, "*", "Adobe After Effects * Prefs.txt"))
+
+    def ver(pth):
+        try:
+            return tuple(int(x) for x in os.path.basename(os.path.dirname(pth)).split("."))
+        except ValueError:
+            return (0,)
+
+    return max(cands, key=ver) if cands else ""
+
+
+def ensure_ae_script_permissions():
+    """The status report and file output need 'Allow Scripts to Write Files and Access Network'.
+    If AE isn't running we enable it in its prefs file; if it is running we explain how to enable it."""
+    pf = _ae_prefs_file()
+    if not pf:
+        return
+    with open(pf, "rb") as f:
+        data = f.read()
+    on = ('"%s" = "1"' % AE_SCRIPT_PREF_KEY).encode()
+    off = ('"%s" = "0"' % AE_SCRIPT_PREF_KEY).encode()
+    if on in data or off not in data:
+        return
+    running = subprocess.run(
+        ["pgrep", "-x", "After Effects"], capture_output=True
+    ).returncode == 0
+    if running:
+        raise RuntimeError(
+            "After Effects is blocking scripts from writing files.\n\n"
+            "In After Effects choose Settings > Scripting & Expressions, tick "
+            "'Allow Scripts to Write Files and Access Network', click OK, then quit and relaunch "
+            "After Effects (or quit it and let this app relaunch it), and run again."
+        )
+    with open(pf, "wb") as f:
+        f.write(data.replace(off, on))
 
 
 def create_flat_slate_folder(out_dir):
@@ -3113,6 +3213,7 @@ class SuperJoyWorkstation:
         self.write_marry_jsx(jsx_path, marry_jobs, aep_marry_path, beep_path, settings)
 
         ensure_ame_running()
+        clear_jsx_status(jsx_path)
         ae_target = resolve_ae_applescript_target()
         applescript = f'''
         on run argv
@@ -3125,6 +3226,7 @@ class SuperJoyWorkstation:
         '''
 
         try:
+            ensure_ae_script_permissions()
             subprocess.run(
                 ["osascript", "-e", applescript, jsx_path],
                 check=True,
@@ -3132,6 +3234,7 @@ class SuperJoyWorkstation:
                 text=True,
                 timeout=3600,
             )
+            verify_jsx_status(jsx_path)
             msg = (
                 f"Married {len(marry_jobs)} existing slate(s) + master video(s) and queued in AME!\n\n"
                 f"Folders Created:\n"
@@ -3293,22 +3396,25 @@ class SuperJoyWorkstation:
         var aepFile = new File({json.dumps(aep_path)});
         app.project.save(aepFile);
         var queued = false, lastErr = "";
+        __SJ_STATUS.rqItems = app.project.renderQueue.numItems;
         for (var qa = 0; qa < 4 && !queued; qa++) {{
             try {{
                 app.project.renderQueue.queueInAME(false);
                 queued = true;
+                __SJ_STATUS.queued = true;
             }} catch (eQ) {{
                 lastErr = String(eQ);
                 $.sleep(5000);
             }}
         }}
         if (!queued) {{
+            __SJ_STATUS.error = "Could not queue in Adobe Media Encoder: " + lastErr;
             alert("Could not reach Adobe Media Encoder (" + lastErr + ").\\n\\nThe project is saved with the render queue intact. Make sure Media Encoder is open and not frozen (quit and relaunch it if needed), then in After Effects click 'Queue in AME' in the Render Queue panel.");
         }}
         app.endUndoGroup();
         """
         with open(path, "w", encoding="utf-8") as f:
-            f.write(jsx_code)
+            f.write(wrap_jsx_with_status(jsx_code, path + ".status"))
 
     # ------------------------------------------------------------------
     # Workflow Execution
@@ -3472,6 +3578,7 @@ class SuperJoyWorkstation:
         self.write_unslate_jsx(jsx_path, unslate_jobs, aep_unslate_path, settings)
 
         ensure_ame_running()
+        clear_jsx_status(jsx_path)
         ae_target = resolve_ae_applescript_target()
         applescript = f'''
         on run argv
@@ -3484,6 +3591,7 @@ class SuperJoyWorkstation:
         '''
 
         try:
+            ensure_ae_script_permissions()
             subprocess.run(
                 ["osascript", "-e", applescript, jsx_path],
                 check=True,
@@ -3491,6 +3599,7 @@ class SuperJoyWorkstation:
                 text=True,
                 timeout=3600,
             )
+            verify_jsx_status(jsx_path)
             msg = (
                 f"Queued {len(unslate_jobs)} un-slated spot(s) in Adobe Media Encoder!\n\n"
                 f"Output Folders:\n"
@@ -3616,22 +3725,25 @@ class SuperJoyWorkstation:
         var aepFile = new File({json.dumps(aep_path)});
         app.project.save(aepFile);
         var queued = false, lastErr = "";
+        __SJ_STATUS.rqItems = app.project.renderQueue.numItems;
         for (var qa = 0; qa < 4 && !queued; qa++) {{
             try {{
                 app.project.renderQueue.queueInAME(false);
                 queued = true;
+                __SJ_STATUS.queued = true;
             }} catch (eQ) {{
                 lastErr = String(eQ);
                 $.sleep(5000);
             }}
         }}
         if (!queued) {{
+            __SJ_STATUS.error = "Could not queue in Adobe Media Encoder: " + lastErr;
             alert("Could not reach Adobe Media Encoder (" + lastErr + ").\\n\\nThe project is saved with the render queue intact. Make sure Media Encoder is open and not frozen (quit and relaunch it if needed), then in After Effects click 'Queue in AME' in the Render Queue panel.");
         }}
         app.endUndoGroup();
         """
         with open(path, "w", encoding="utf-8") as f:
-            f.write(jsx_code)
+            f.write(wrap_jsx_with_status(jsx_code, path + ".status"))
 
     # ------------------------------------------------------------------
     # Slate (After Effects + AME Queue — Supports Slated Masters & Standalone Slates Only)
@@ -3859,6 +3971,7 @@ class SuperJoyWorkstation:
         self.write_jsx(jsx_path, ae_jobs, aep_master_path, beep_path, render_cfg, templates)
 
         ensure_ame_running()
+        clear_jsx_status(jsx_path)
         ae_target = resolve_ae_applescript_target()
         applescript = f'''
         on run argv
@@ -3871,6 +3984,7 @@ class SuperJoyWorkstation:
         '''
 
         try:
+            ensure_ae_script_permissions()
             subprocess.run(
                 ["osascript", "-e", applescript, jsx_path],
                 check=True,
@@ -3878,6 +3992,7 @@ class SuperJoyWorkstation:
                 text=True,
                 timeout=3600,
             )
+            verify_jsx_status(jsx_path)
             mode_desc = "Standalone Slates Project" if slates_only else "Master Slated + Unslated Project"
             folder_summary = (
                 f"• {folders['slated_prores']}"
@@ -4292,22 +4407,25 @@ class SuperJoyWorkstation:
         var aepFile = new File({json.dumps(aep_path)});
         app.project.save(aepFile);
         var queued = false, lastErr = "";
+        __SJ_STATUS.rqItems = app.project.renderQueue.numItems;
         for (var qa = 0; qa < 4 && !queued; qa++) {{
             try {{
                 app.project.renderQueue.queueInAME(false);
                 queued = true;
+                __SJ_STATUS.queued = true;
             }} catch (eQ) {{
                 lastErr = String(eQ);
                 $.sleep(5000);
             }}
         }}
         if (!queued) {{
+            __SJ_STATUS.error = "Could not queue in Adobe Media Encoder: " + lastErr;
             alert("Could not reach Adobe Media Encoder (" + lastErr + ").\\n\\nThe project is saved with the render queue intact. Make sure Media Encoder is open and not frozen (quit and relaunch it if needed), then in After Effects click 'Queue in AME' in the Render Queue panel.");
         }}
         app.endUndoGroup();
         """
         with open(path, "w", encoding="utf-8") as f:
-            f.write(jsx_code)
+            f.write(wrap_jsx_with_status(jsx_code, path + ".status"))
 
 
 if __name__ == "__main__":
