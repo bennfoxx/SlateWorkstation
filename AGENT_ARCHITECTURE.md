@@ -3,13 +3,26 @@
 ## 1. Purpose & Domain Scope
 **SuperJoy Slating Workstation** is a macOS broadcast post-production automation application written in Python 3 (`tkinter` + `ctypes` Objective-C runtime bridge) that drives **Adobe After Effects** and **Adobe Media Encoder (AME)** via dynamically generated **ExtendScript (`.jsx`)** and `osascript` (AppleScript).
 
-It automates two core broadcast finishing workflows:
-1. **Batch Broadcast Slating (`process_batch` / `write_jsx`)**:
-   - Pairs commercial spot metadata (either auto-parsed from master video filenames in the **Batch Slate Builder** or imported from `.tsv`/`.csv` spreadsheets) with master video files (`.mov`, `.mp4`, `.mxf`).
-   - Opens the native After Effects Slate Template project (`sj_Slates From Spreadsheet_Template_005.aep`), duplicates the matching aspect ratio composition (`16x9`, `1x1`, `4x5`, `9x16`, `2x3`), populates all dynamic text layers on a single auto-fitted line, toggles the `#Flame` finishing badge, builds slated master compositions (`00:59:53:00` display start timecode), saves `SuperJoy_Master_Slates.aep`, and queues all comps in **Adobe Media Encoder**.
-2. **Batch Un-Slating (`process_unslate` / `write_unslate_jsx`)**:
+It organizes broadcast slating and finishing into **four focused workspace tabs** plus a top-level **Build Output Mode** selector:
+
+1. **Tab 1 — Batch Slate Builder (`self.tab_builder`, index `"1"`)**:
+   - Auto-pulls `Ad-ID`, underscored `Title`, `TRT` (`60`, `30`, `15`, `06`), and aspect ratio (`16x9`, `1x1`, `4x5`, `9x16`) from filenames in `MASTER VIDEOS`, or merges a CSV/TSV spreadsheet via `prompt_and_merge_csv_into_batch()`, or accepts manual entry for standalone slates.
+   - Supports multi-resolution slate generation and single-tap retroactive resolution editing in the queue table.
+2. **Tab 2 — CSV / TSV + Video Naming (`self.tab_file`, index `"0"`)**:
+   - Parses `.csv`, `.tsv`, or `.txt` metadata sheets (`parse_metadata_file`).
+   - Combines CSV metadata with Master Videos (`load_csv_into_batch_builder`) to enforce accurate canonical delivery filenames (`build_canonical_delivery_stem` -> `<Ad-ID>_<Title>_Slated.mov`).
+   - Can batch-rename raw master video files on disk (`rename_master_videos_from_metadata`) so source files match the exact canonical `<Ad-ID>_<Title>.<ext>` from the spreadsheet.
+3. **Tab 3 — Marry Slates + Videos (`self.tab_marry`, index `"3"`)**:
+   - Pairs already-rendered slates (`.mov`, `.mp4`, `.mxf`, `.png`, `.tif`, `.psd`, `.jpg`) from `self.marry_slates_dir` with existing Master Videos from `self.videos_dir` by `Ad-ID` and aspect ratio (`_scan_marry_pairs`).
+   - Optionally applies canonical delivery filenames from a CSV/TSV file (`self.marry_csv_path`).
+   - Builds married broadcast compositions (`00:59:53:00` display start timecode, `0..5s` existing slate + 1-frame 1kHz 2-pop at `5.0s` + `2.0s` black + master video at `7.0s`), saves `MARRIED_DELIVERY/SuperJoy_Married_Slates.aep`, and queues all comps in **Adobe Media Encoder** (`process_marry` / `write_marry_jsx`).
+4. **Tab 4 — Un-Slate (Trim 7.0s) (`self.tab_unslate`, index `"2"`)**:
    - Performs a non-destructive `7.0s` head trim (removing the `5.0s` slate + `2.0s` black/2-pop leader so picture starts at `01:00:00:00`) using **After Effects + Adobe Media Encoder**.
-   - Creates a clean composition per video (`comp.displayStartTime = 3600.0`, `vidLayer.startTime = -7.0`), saves an editable project (`<Folder>/UNSLATED/SuperJoy_Unslate_Project.aep`) for retroactive QC and manual slip/trim adjustments, and sends all trimmed comps to **Adobe Media Encoder** (`app.project.renderQueue.queueInAME(false)`).
+   - Creates a clean composition per video (`comp.displayStartTime = 3600.0`, `vidLayer.startTime = -7.0`), saves an editable project (`<Folder>/UNSLATED/SuperJoy_Unslate_Project.aep`) for retroactive QC and manual slip/trim adjustments, and sends all trimmed comps to **Adobe Media Encoder** (`process_unslate` / `write_unslate_jsx`).
+
+### Top-Level Build Output Mode (`self.output_mode_var`)
+- **`"slated_masters"` (`Slated Masters (Slate + Video)`)**: Pairs each generated slate with its matching master video and queues the full slated master comp (`7.0s + video.duration`) in AME (`SLATED_DELIVERY/SuperJoy_Master_Slates.aep`).
+- **`"slates_only"` (`Standalone Slates Only (No Video Attached)`)**: Builds and populates only the `5.0s` slate compositions (including countdown and 1-frame 2-pop) from `sj_Slates From Spreadsheet_Template_005.aep` and queues them directly in AME (`STANDALONE_SLATES/SuperJoy_Standalone_Slates.aep`) without requiring any master videos.
 
 ---
 
@@ -17,10 +30,10 @@ It automates two core broadcast finishing workflows:
 
 | File | Role |
 | :--- | :--- |
-| `SuperJoy_Slating_App.py` | Main single-file macOS GUI application, filename parser, CSV/TSV normalizer, Objective-C `TKWindow` tap patch, and ExtendScript (`.jsx`) generator. |
+| `SuperJoy_Slating_App.py` | Main single-file macOS GUI application, filename parser, CSV/TSV normalizer, video file renamer, slate/video marriage engine, Objective-C `TKWindow` tap patch, and ExtendScript (`.jsx`) generator. |
 | `sj_Slates From Spreadsheet_Template_005.aep` | Native Adobe After Effects broadcast slate template containing pre-built aspect compositions (`16x9`, `1x1`, `4x5`, `9x16`, `2x3`), countdown layers, 1-frame 2-pop smiley & tone, and `#Flame` pre-comps (`y`/`n`). |
 | `Start_SuperJoy_Slating_App.command` | Double-clickable macOS `zsh` launcher that resolves its own directory (`${0:A:h}`) and selects a Python 3 interpreter with `tkinter` support. |
-| `readme.txt` | Assistant Editor operational guide covering setup, Batch Slate Builder, TSV/CSV import, multi-resolution workflows, and AME Un-Slating. |
+| `readme.txt` | Assistant Editor operational guide covering all 4 tabs, Standalone Slates Only mode, CSV+Video filename syncing, Marrying existing slates, and AME Un-Slating. |
 | `AGENT_ARCHITECTURE.md` | This technical reference document for AI coding agents and developers. |
 
 ---
@@ -68,7 +81,7 @@ Each aspect composition in `__templates` has 42 layers organized into four funct
 
 4. **Static Left-Column Label Text Layers (Layers 18–26)**:
    - Named `AGENCY`, `CLIENT`, `TITLE`, `ID`, `TRT`, `DATE`, `WORKSPACE`, `AUDIO`, `COPYRIGHT` (no `^` prefix).
-   - **CRITICAL INVARIANT**: `resolveFieldValue()` in `write_jsx()` explicitly returns `null` for any layer lacking a `^` prefix whose lowercase name matches one of these 9 static labels. Never strip `^` unconditionally before checking for static labels, or you will overwrite the narrow left-column labels (`240px` wide) with long values and cause severe text wrapping/overlap.
+   - **CRITICAL INVARIANT**: `resolveFieldValue()` in `write_jsx()` explicitly returns `null` for any layer lacking a `^` prefix whose lowercase name matches one of these 9 static labels.
 
 ---
 
@@ -78,49 +91,20 @@ Each aspect composition in `__templates` has 42 layers organized into four funct
 - **Single-Line Sanitization**: Both Python (`sanitize_single_line`) and ExtendScript (`cleanLine`) strip all `\r`, `\n`, and `\t` characters so no value can ever break onto a second line and collide with the slate row beneath it.
 - **Box-Text Widening**: If a `TextLayer` uses paragraph/box text (`textDoc.boxText == true`), `textDoc.boxTextSize` is widened to `[4000, 300]` before setting `textDoc.text` so After Effects never soft-wraps unbroken strings with underscores (`_`).
 - **Auto-Fit Font Scaling (`sourceRectAtTime`)**:
-  - In `sj_Slates From Spreadsheet_Template_005.aep`, the right-hand value column starts at `x = 480` on `16x9` (right grid boundary at `x = 1120`, available width `630px`) and `x = 375` on `1x1`/`4x5`/`9x16` (right grid boundary at `x = 1015`, available width `620px`).
   - After setting `textDoc.text`, `applySingleLineText()` measures the rendered single-line width via `layer.sourceRectAtTime(2.0, false).width`.
-  - If `rect.width > maxWidthPx`, it proportionally scales `textDoc.fontSize` down (`Math.max(12, Math.floor(baseFontSize * (maxWidthPx / rect.width) * 0.98))`) and applies a compensating `textDoc.baselineShift` (`-Math.round((baseFontSize - newSize) * 0.35)`) so the scaled text remains vertically centered with its left-column label.
+  - If `rect.width > maxWidthPx` (`630px` on `16x9`, `620px` on `1x1`/`4x5`/`9x16`), it proportionally scales `textDoc.fontSize` down and applies a compensating `textDoc.baselineShift` (`-Math.round((baseFontSize - newSize) * 0.35)`) so the scaled text remains vertically centered with its left-column label.
 
 ### 4.2 In the macOS Tkinter GUI (`bind_auto_wrap` & `RoundedEntry`)
 - Dynamic `tk.Label` descriptions use `bind_auto_wrap(label, container, pad=28)` which listens to `<Configure>` on the parent container and updates `label.configure(wraplength=...)` dynamically as the window resizes.
-- `RoundedEntry` sets `width=4` on the internal `tk.Entry` widget and positions it via `Canvas.create_window(..., width=w - 24)` on `<Configure>`, preventing `tk.Entry`'s character-width request from forcing parent grid columns wider than the window (`980×810`, `minsize(920, 750)`).
+- `RoundedEntry` sets `width=4` on the internal `tk.Entry` widget and positions it via `Canvas.create_window(..., width=w - 24)` on `<Configure>`, preventing `tk.Entry`'s character-width request from forcing parent grid columns wider than the window.
 
 ---
 
 ## 5. Key Subsystems & Internal Mechanisms
 
-### 5.1 macOS Tk 8.6.12 Single-Tap Fix (`patch_macos_tk_tap_bug`)
-Bundled Python 3.11 on macOS ships with Tcl/Tk `8.6.12`, whose `-[TKWindow mouseInResizeArea:]` implementation in `libtk8.6.dylib` returns `YES` across the bottom ~30% of the window. That causes `-[TKApplication _checkResize:]` to swallow `NSLeftMouseDown` events before Tk widgets ever see them.
-- `patch_macos_tk_tap_bug()` uses `ctypes` and `libobjc.A.dylib` (`class_replaceMethod`) to swizzle `TKWindow.mouseInResizeArea:` to always return `0` (`NO`).
-- Every custom widget (`RoundedButton`, `SegmentedPills`, `MultiSelectPills`, `CheckPill`, `RoundedEntry`) binds directly to `<ButtonPress-1>` for immediate single-tap activation.
-- Modal native dialogs (`filedialog`, `messagebox`) are wrapped in `run_after_mouse_up()` + `reset_tk_mouse_state()` + `wake_macos_window()` so AppKit's modal loop never leaves Tk's button-state mask stuck.
-
-### 5.2 Dynamic After Effects App Target Resolution (`resolve_ae_applescript_target`)
-Adobe changed the macOS bundle identifier in newer releases (`com.adobe.AfterEffects.application` in AE 2025/2026 vs. `com.adobe.AfterEffects` in older versions). Calling `tell application id "com.adobe.AfterEffects"` on AE 2026 fails with AppleEvent error `-1728`.
-- `resolve_ae_applescript_target()` scans `/Applications/Adobe After Effects */Adobe After Effects *.app` (newest year first), inspects `Contents/Info.plist`, and returns `application "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app"` (or falls back to `application id "com.adobe.AfterEffects"`).
-
-### 5.3 Master Video Filename Parser (`parse_video_filename` & `detect_aspect_from_text`)
-When scanning a Master Videos folder:
-- `parse_video_filename(filename)` extracts:
-  - `ad_id`: Leading token (`^[A-Za-z0-9-]+` containing at least one digit, or short leading prefix).
-  - `trt`: Broadcast durations (`60`, `30`, `15`, `06`, `:30`, `30s`, `15sec`, etc.), prioritizing standard broadcast times (`60`, `30`, `15`, `06`).
-  - `title`: Remaining body with spaces normalized to underscores (`_`).
-- `detect_aspect_from_text(text)` detects `16x9`, `1x1`, `4x5`, `9x16`, or pixel dimensions (`1920x1080`, `1080x1080`, `1080x1350`, `1080x1920`).
-
-### 5.4 Multi-Resolution & Retroactive Resolution Editing
-- Each entry in `self.manual_batch_data` stores `"aspect"` (`"16x9"`, `"1x1"`, `"4x5"`, `"9x16"`) and `"resolution"` (`"16x9 (1920×1080)"`, etc.).
-- Tapping column `#3` (`RESOLUTION`) in `self.tree` (`_on_tree_tap`) immediately cycles that individual row's aspect ratio.
-- `self.batch_res_pills` (`MultiSelectPills`) allows selecting multiple aspect ratios simultaneously; `apply_res_to_selected()` either updates selected rows to a single aspect ratio or expands each selected spot into multiple slate rows (one per selected aspect ratio).
-- When multiple slates share the same `Ad-ID` in `process_batch()`, output filenames automatically include the aspect suffix (`<Ad-ID>_<aspect>_Slated.mov`) so exports never overwrite each other in AME.
-
----
-
-## 6. Extension Guidelines for Future AI Agents
-1. **Adding New Aspect Ratios (e.g., `2x3`)**:
-   - `sj_Slates From Spreadsheet_Template_005.aep` already contains a `2x3` (`1080×1620`) comp inside `__templates`, and `write_jsx()` already indexes `item.name === "2x3"` into `templateComps["2x3"]`. To expose `2x3` in the UI, add `"2x3": (1080, 1620)` to `ASPECT_RESOLUTIONS` in `SuperJoy_Slating_App.py`.
-2. **Adding Custom Adobe Media Encoder Presets (`.epr`)**:
-   - Currently, `app.project.renderQueue.queueInAME(...)` queues items using AME's default/last-used format preset so the assistant editor can verify or switch presets before starting the queue (`queueInAME(false)` in Un-Slate, `queueInAME(true)` in Slate).
-   - If a studio `.epr` preset file is introduced in the future, apply it on `rqItem.outputModule(1).applyTemplate(...)` prior to calling `queueInAME()`.
-3. **Modifying Text Layer Mapping**:
-   - Always test against `sj_Slates From Spreadsheet_Template_005.aep` and verify that layers `18..26` (static left-column labels) are untouched and that layers `2` (`THE MARTIN AGENCY`), `9` (`STEREO`), and `10` (`^Copyright`) have `textProp.expressionEnabled = false` set before updating `Source Text`.
+1. **macOS Tk 8.6.12 Single-Tap Fix (`patch_macos_tk_tap_bug`)**:
+   - Uses `ctypes` and `libobjc.A.dylib` (`method_setImplementation`) to swizzle `TKWindow.mouseInResizeArea` to return `0` (`NO`), fixing the macOS Sonoma/Sequoia/Tahoe + Tk 8.6.12 bug where light trackpad taps are dropped.
+2. **Dynamic After Effects App Target Resolution (`resolve_ae_applescript_target`)**:
+   - Scans `/Applications/Adobe After Effects */Adobe After Effects *.app` (newest year first) and returns an explicit `application "/Applications/..."` clause so `osascript` never fails with `-1728` on AE 2025/2026 (`com.adobe.AfterEffects.application`).
+3. **Canonical Delivery Filename Builder (`build_canonical_delivery_stem`)**:
+   - Combines `Ad-ID` + underscored `Title` + optional aspect suffix (`16x9`, `4x5`, etc.) + mode suffix (`Slated` or `Slate`), ensuring accurate delivery filenames when combining CSV metadata with master videos or renaming master video files on disk (`rename_master_videos_from_metadata`).

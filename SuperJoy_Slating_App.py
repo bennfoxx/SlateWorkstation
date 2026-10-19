@@ -60,6 +60,7 @@ def pick_font_family():
 # Note: Adobe After Effects 2024/2025/2026+ uses CFBundleIdentifier "com.adobe.AfterEffects.application".
 AE_BUNDLE_ID = os.environ.get("SUPERJOY_AE_BUNDLE_ID", "com.adobe.AfterEffects.application")
 VALID_EXTS = (".mov", ".mp4", ".mxf")
+SLATE_ASSET_EXTS = (".mov", ".mp4", ".mxf", ".png", ".tif", ".tiff", ".psd", ".jpg", ".jpeg")
 UNSLATE_SECONDS = 7.0  # 5s slate + 2s black
 
 
@@ -163,6 +164,37 @@ def sanitize_single_line(value):
     if value is None:
         return ""
     return re.sub(r"[\r\n\t]+", " ", str(value)).strip()
+
+
+def sanitize_filename_token(value):
+    """Format a metadata string into a filesystem-safe broadcast filename token with underscores."""
+    if not value:
+        return ""
+    cleaned = sanitize_single_line(value)
+    cleaned = re.sub(r"[\\/:*?\"<>|]+", "_", cleaned)
+    cleaned = re.sub(r"\s*_\s*|\s+", "_", cleaned).strip("_.")
+    return cleaned
+
+
+def build_canonical_delivery_stem(data, target_aspect=None, include_aspect=False, suffix="Slated"):
+    """Construct an accurate broadcast delivery filename stem from normalized slate metadata
+    (Ad-ID + underscored Title + optional aspect token + suffix) so outputs have guaranteed accurate filenames."""
+    ad_id = sanitize_filename_token(data.get("id") or data.get("ad-id") or "SPOT")
+    title = sanitize_filename_token(data.get("title") or data.get("name") or "")
+    # Avoid duplicating Ad-ID if the title already begins with the Ad-ID
+    if title and title.lower().startswith(ad_id.lower()):
+        stem = title
+    elif title:
+        stem = f"{ad_id}_{title}"
+    else:
+        stem = ad_id
+
+    if include_aspect and target_aspect and target_aspect.lower() not in stem.lower():
+        stem = f"{stem}_{target_aspect}"
+
+    if suffix:
+        stem = f"{stem}_{suffix}"
+    return stem
 
 
 def normalize_slate_row(raw_row):
@@ -1123,10 +1155,14 @@ class SuperJoyWorkstation:
         )
         self.videos_dir = tk.StringVar()
         self.unslate_dir = tk.StringVar()
+        self.marry_slates_dir = tk.StringVar()
+        self.marry_csv_path = tk.StringVar()
+        self.output_mode_var = tk.StringVar(value="slated_masters")  # 'slated_masters' or 'slates_only'
         self.fps_var = tk.StringVar(value=DEFAULT_FPS_LABEL)
         self.aspect_var = tk.StringVar(value=DEFAULT_ASPECT)
         self.active_tab_var = tk.StringVar(value="1")  # Open on Batch Slate Builder by default
         self.manual_batch_data = []
+        self.marry_pairs_data = []
         self._loading_row = False
 
         # Shared campaign fields (filled in by user) + per-spot fields (pulled from master video filenames)
@@ -1148,6 +1184,9 @@ class SuperJoyWorkstation:
         self.videos_dir.trace_add("write", lambda *_: self._on_videos_dir_changed())
         self.tsv_path.trace_add("write", lambda *_: self.update_file_preview())
         self.unslate_dir.trace_add("write", lambda *_: self.update_unslate_preview())
+        self.marry_slates_dir.trace_add("write", lambda *_: self.update_marry_preview())
+        self.marry_csv_path.trace_add("write", lambda *_: self.update_marry_preview())
+        self.output_mode_var.trace_add("write", lambda *_: self._on_output_mode_changed())
         self.update_asset_badges()
 
         # Propagate shared campaign metadata edits to queued batch items in real time
@@ -1225,7 +1264,7 @@ class SuperJoyWorkstation:
     def create_widgets(self):
         # 1. Header Bar
         header = tk.Frame(self.root, bg=BG_DARK)
-        header.pack(side="top", fill="x", padx=24, pady=(12, 6))
+        header.pack(side="top", fill="x", padx=24, pady=(10, 4))
 
         title_col = tk.Frame(header, bg=BG_DARK)
         title_col.pack(side="left")
@@ -1247,7 +1286,7 @@ class SuperJoyWorkstation:
         ).pack(side="left")
         tk.Label(
             title_col,
-            text="Broadcast Slate Automation  •  Native .AEP Slate Template  •  1kHz 2-Pop @ 00:59:58:00",
+            text="Broadcast Slate Automation  •  Slates + Videos / Standalone Slates / Marry Slates / Un-Slate",
             font=(FONT, 11),
             bg=BG_DARK,
             fg=TEXT_MUTED,
@@ -1257,7 +1296,7 @@ class SuperJoyWorkstation:
 
         # 2. Pinned Bottom Action Footer (packed BEFORE expandable workspace so it is NEVER clipped!)
         footer = tk.Frame(self.root, bg=BG_DARK)
-        footer.pack(side="bottom", fill="x", padx=24, pady=(6, 12))
+        footer.pack(side="bottom", fill="x", padx=24, pady=(5, 10))
 
         self.btn_run = RoundedButton(
             footer,
@@ -1266,19 +1305,19 @@ class SuperJoyWorkstation:
             color=ACCENT_RED,
             font_spec=(FONT, 15, "bold"),
             padx=36,
-            pady=12,
+            pady=11,
             radius=16,
         )
         self.btn_run.pack(anchor="center")
 
         # 3. Master Assets Card
-        assets_card = RoundedCard(self.root, bg_fill=BG_CARD, border_color=BORDER_SUBTLE, radius=16, pad=13)
-        assets_card.pack(side="top", fill="x", padx=24, pady=(0, 8))
+        assets_card = RoundedCard(self.root, bg_fill=BG_CARD, border_color=BORDER_SUBTLE, radius=16, pad=11)
+        assets_card.pack(side="top", fill="x", padx=24, pady=(0, 6))
         ab = assets_card.body
         ab.columnconfigure(1, weight=1)
 
         hdr_row = tk.Frame(ab, bg=BG_CARD)
-        hdr_row.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 6))
+        hdr_row.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 4))
         tk.Label(
             hdr_row,
             text="MASTER ASSETS & STUDIO CONFORM",
@@ -1296,35 +1335,35 @@ class SuperJoyWorkstation:
         self.asset_status_lbl.pack(side="right")
 
         tk.Label(ab, text="SLATE TEMPLATE (.AEP)", font=(FONT, 11, "bold"), bg=BG_CARD, fg=TEXT_MUTED).grid(
-            row=1, column=0, sticky="w", padx=(0, 10), pady=3
+            row=1, column=0, sticky="w", padx=(0, 10), pady=2
         )
-        RoundedEntry(ab, self.template_dir, 38).grid(row=1, column=1, sticky="ew", padx=(0, 10), pady=3)
+        RoundedEntry(ab, self.template_dir, 38).grid(row=1, column=1, sticky="ew", padx=(0, 10), pady=2)
         mkbtn(
             ab,
             text="Browse",
             command=lambda: self._browse_template(self.template_dir, "Select After Effects Slate Template (.aep)"),
             padx=18,
-            pady=6,
-        ).grid(row=1, column=2, pady=3)
+            pady=5,
+        ).grid(row=1, column=2, pady=2)
 
         tk.Label(ab, text="MASTER VIDEOS", font=(FONT, 11, "bold"), bg=BG_CARD, fg=TEXT_MUTED).grid(
-            row=2, column=0, sticky="w", padx=(0, 10), pady=3
+            row=2, column=0, sticky="w", padx=(0, 10), pady=2
         )
-        RoundedEntry(ab, self.videos_dir, 38).grid(row=2, column=1, sticky="ew", padx=(0, 10), pady=3)
+        RoundedEntry(ab, self.videos_dir, 38).grid(row=2, column=1, sticky="ew", padx=(0, 10), pady=2)
         mkbtn(
             ab,
             text="Browse",
             command=lambda: self._browse_dir(self.videos_dir, "Select Master Videos Folder"),
             padx=18,
-            pady=6,
-        ).grid(row=2, column=2, pady=3)
+            pady=5,
+        ).grid(row=2, column=2, pady=2)
 
         # Fallback FPS & Aspect Pill Bar (No ttk.Combobox!)
         tk.Label(ab, text="STUDIO STANDARD", font=(FONT, 11, "bold"), bg=BG_CARD, fg=TEXT_MUTED).grid(
-            row=3, column=0, sticky="w", padx=(0, 10), pady=(5, 1)
+            row=3, column=0, sticky="w", padx=(0, 10), pady=(4, 2)
         )
         std_row = tk.Frame(ab, bg=BG_CARD)
-        std_row.grid(row=3, column=1, columnspan=2, sticky="ew", pady=(5, 1))
+        std_row.grid(row=3, column=1, columnspan=2, sticky="ew", pady=(4, 2))
 
         fps_choices = [(k, k) for k in ("23.976", "24", "25", "29.97", "30", "59.94", "60")]
         self.fps_pills = SegmentedPills(
@@ -1359,22 +1398,51 @@ class SuperJoyWorkstation:
         self.aspect_var.trace_add("write", lambda *_: self.update_res_label())
         self.update_res_label()
 
-        # 4. Segmented Mode Tab Bar (Replaces ttk.Notebook)
+        # Output Mode Row: Slated Masters (Slate + Video) vs Standalone Slates Only (No Video Required)
+        tk.Label(ab, text="BUILD OUTPUT MODE", font=(FONT, 11, "bold"), bg=BG_CARD, fg=ACCENT_YELLOW).grid(
+            row=4, column=0, sticky="w", padx=(0, 10), pady=(4, 1)
+        )
+        mode_row = tk.Frame(ab, bg=BG_CARD)
+        mode_row.grid(row=4, column=1, columnspan=2, sticky="ew", pady=(4, 1))
+        self.output_mode_pills = SegmentedPills(
+            mode_row,
+            [
+                ("slated_masters", "Slated Masters (Slate + Video)"),
+                ("slates_only", "Standalone Slates Only (No Video Attached)"),
+            ],
+            variable=self.output_mode_var,
+            font_spec=(FONT, 10, "bold"),
+            pad_x=12,
+            pad_y=3,
+            radius=8,
+        )
+        self.output_mode_pills.pack(side="left")
+        self.output_mode_hint = tk.Label(
+            mode_row,
+            text="Pairs each slate with its master video",
+            font=(FONT, 10),
+            bg=BG_CARD,
+            fg=TEXT_MUTED,
+        )
+        self.output_mode_hint.pack(side="left", padx=(10, 0))
+
+        # 4. Segmented Mode Tab Bar (4 Focused Broadcast Modes)
         tab_bar_frame = tk.Frame(self.root, bg=BG_DARK)
-        tab_bar_frame.pack(side="top", fill="x", padx=24, pady=(2, 6))
+        tab_bar_frame.pack(side="top", fill="x", padx=24, pady=(2, 5))
 
         self.tab_pills = SegmentedPills(
             tab_bar_frame,
             [
-                ("0", "Parse from File (TXT / CSV)"),
-                ("1", "Batch Slate Builder"),
-                ("2", "Un-Slate (Trim 7.0s)"),
+                ("1", "1. Batch Slate Builder"),
+                ("0", "2. CSV / TSV + Video Naming"),
+                ("3", "3. Marry Slates + Videos"),
+                ("2", "4. Un-Slate (Trim 7.0s)"),
             ],
             variable=self.active_tab_var,
             command=self.on_tab_changed,
-            font_spec=(FONT, 12, "bold"),
-            pad_x=22,
-            pad_y=6,
+            font_spec=(FONT, 11, "bold"),
+            pad_x=16,
+            pad_y=5,
             radius=10,
         )
         self.tab_pills.pack(side="left")
@@ -1382,19 +1450,21 @@ class SuperJoyWorkstation:
         # Compatibility shim so any external code checking self.notebook works seamlessly
         self.notebook = self
 
-        # 5. Workspace Card (hosts the 3 mode pages)
-        self.workspace_card = RoundedCard(self.root, bg_fill=BG_CARD, border_color=BORDER_SUBTLE, radius=16, pad=14)
+        # 5. Workspace Card (hosts the 4 mode pages; indices 0, 1, 2, 3 preserved)
+        self.workspace_card = RoundedCard(self.root, bg_fill=BG_CARD, border_color=BORDER_SUBTLE, radius=16, pad=13)
         self.workspace_card.pack(side="top", fill="both", expand=True, padx=24, pady=(0, 4))
         wb = self.workspace_card.body
 
         self.tab_file = tk.Frame(wb, bg=BG_CARD)
         self.tab_builder = tk.Frame(wb, bg=BG_CARD)
         self.tab_unslate = tk.Frame(wb, bg=BG_CARD)
-        self._pages = [self.tab_file, self.tab_builder, self.tab_unslate]
+        self.tab_marry = tk.Frame(wb, bg=BG_CARD)
+        self._pages = [self.tab_file, self.tab_builder, self.tab_unslate, self.tab_marry]
 
         self._build_tab_file()
         self._build_tab_builder()
         self._build_tab_unslate()
+        self._build_tab_marry()
 
         self._show_tab(int(self.active_tab_var.get()))
 
@@ -1404,23 +1474,23 @@ class SuperJoyWorkstation:
 
         tk.Label(
             p,
-            text="BATCH SLATE FROM METADATA SPREADSHEET",
+            text="CSV / TSV METADATA IMPORT  •  ACCURATE VIDEO FILENAME SYNC",
             font=(FONT, 12, "bold"),
             bg=BG_CARD,
             fg=ACCENT_RED,
-        ).pack(anchor="w", pady=(4, 2))
+        ).pack(anchor="w", pady=(2, 2))
         desc_lbl = tk.Label(
             p,
-            text="Load a tab-delimited (.tsv / .txt) or comma-delimited (.csv) slate sheet to automatically pair Ad-IDs with master videos.",
-            font=(FONT, 12),
+            text="Load a .csv, .tsv, or .txt metadata sheet to build slates (with or without master videos), send rows to the Batch Slate Builder for editing, or combine with Master Videos to enforce accurate canonical filenames.",
+            font=(FONT, 11),
             bg=BG_CARD,
             fg=TEXT_MUTED,
         )
-        desc_lbl.pack(anchor="w", pady=(0, 16))
+        desc_lbl.pack(anchor="w", pady=(0, 10))
         bind_auto_wrap(desc_lbl, p)
 
         f1 = tk.Frame(p, bg=BG_CARD)
-        f1.pack(fill="x", pady=4)
+        f1.pack(fill="x", pady=3)
         f1.columnconfigure(1, weight=1)
         tk.Label(f1, text="METADATA FILE", font=(FONT, 11, "bold"), bg=BG_CARD, fg=TEXT_MUTED).grid(
             row=0, column=0, sticky="w", padx=(0, 12)
@@ -1430,37 +1500,56 @@ class SuperJoyWorkstation:
             f1,
             text="Browse File",
             command=lambda: self._browse_file(self.tsv_path),
-            padx=20,
-            pady=8,
+            padx=18,
+            pady=7,
         ).grid(row=0, column=2)
 
         self.file_preview_lbl = tk.Label(
             p,
             text="No metadata file selected.",
-            font=(FONT, 12, "bold"),
+            font=(FONT, 11, "bold"),
             bg=BG_CARD,
             fg=ACCENT_YELLOW,
         )
-        self.file_preview_lbl.pack(anchor="w", pady=(14, 16))
+        self.file_preview_lbl.pack(anchor="w", pady=(8, 8))
         bind_auto_wrap(self.file_preview_lbl, p)
 
-        info_card = RoundedCard(p, bg_fill=BG_DARKER, border_color=BORDER_SUBTLE, radius=12, pad=14)
-        info_card.pack(fill="x", pady=(4, 0))
+        # Action toolbar for combining CSV/TSV with Master Videos & Queue
+        csv_bar = tk.Frame(p, bg=BG_CARD)
+        csv_bar.pack(fill="x", pady=(0, 10))
+        mkbtn(
+            csv_bar,
+            text="Load CSV + Pair Videos into Batch Builder",
+            bg=BG_BLUE,
+            command=lambda: self.load_csv_into_batch_builder(switch_to_builder=True),
+            padx=14,
+            pady=6,
+        ).pack(side="left")
+        mkbtn(
+            csv_bar,
+            text="Rename Master Video Files from CSV Metadata",
+            bg="#4CAF50",
+            command=self.rename_master_videos_from_metadata,
+            padx=14,
+            pady=6,
+        ).pack(side="left", padx=(8, 0))
+
+        info_card = RoundedCard(p, bg_fill=BG_DARKER, border_color=BORDER_SUBTLE, radius=12, pad=12)
+        info_card.pack(fill="x", pady=(2, 0))
         ib = info_card.body
         tk.Label(
             ib,
-            text="AUTOMATED BROADCAST PIPELINE",
+            text="HOW CSV / TSV + MASTER VIDEO COMBINING WORKS",
             font=(FONT, 11, "bold"),
             bg=BG_DARKER,
             fg=ACCENT_RED,
-        ).pack(anchor="w", pady=(0, 6))
+        ).pack(anchor="w", pady=(0, 5))
         steps = (
-            "1. Strict word-boundary Ad-ID matching ('XQ12' pairs with 'XQ12_Master.mov', never 'XQ1234_Master.mov').\n"
-            "2. Conforms each slated composition & output to the source video's native resolution and frame rate.\n"
-            "3. Selects the matching native PSD slate template (16x9, 1x1, 4x5, or 9x16) and auto-fits long single-line text.\n"
-            "4. Inserts 5.0s slate (00:59:53:00), 2.0s black solid, and 1-frame 1kHz 2-pop at 5.0s (00:59:58:00)."
+            "• Accurate Output Naming: Slated deliveries are automatically named <Ad-ID>_<Canonical_CSV_Title>_Slated.mov using your spreadsheet's exact Ad-ID and Title.\n"
+            "• Source File Renaming: Tap 'Rename Master Video Files from CSV Metadata' to rename raw master videos on disk (e.g. 'PJ595169000H_v3_final.mov' → 'PJ595169000H_PapaJohns_Pairings_16x9_15.mov').\n"
+            "• Standalone Slates Only: Switch 'BUILD OUTPUT MODE' above to 'Standalone Slates Only' to build 5.0s slates from your CSV without needing any master videos!"
         )
-        steps_lbl = tk.Label(ib, text=steps, font=(FONT, 12), bg=BG_DARKER, fg=TEXT_MUTED, justify="left")
+        steps_lbl = tk.Label(ib, text=steps, font=(FONT, 11), bg=BG_DARKER, fg=TEXT_MUTED, justify="left")
         steps_lbl.pack(anchor="w")
         bind_auto_wrap(steps_lbl, ib)
 
@@ -1469,7 +1558,7 @@ class SuperJoyWorkstation:
 
         # Section 1: Campaign Fields (User-entered shared fields + auto YYYY_MM_DD Date)
         sec1_hdr = tk.Frame(p, bg=BG_CARD)
-        sec1_hdr.pack(fill="x", pady=(0, 3))
+        sec1_hdr.pack(fill="x", pady=(0, 2))
         tk.Label(
             sec1_hdr,
             text="CAMPAIGN METADATA (APPLIED TO BATCH)",
@@ -1479,14 +1568,14 @@ class SuperJoyWorkstation:
         ).pack(side="left")
         tk.Label(
             sec1_hdr,
-            text="Fill in Agency, Client, Workspace & Copyright — Date defaults to YYYY_MM_DD",
+            text="Works with Master Videos OR Standalone (Slates Only)",
             font=(FONT, 10),
             bg=BG_CARD,
             fg=TEXT_MUTED,
         ).pack(side="right")
 
         form_frame = tk.Frame(p, bg=BG_CARD)
-        form_frame.pack(fill="x", pady=(0, 4))
+        form_frame.pack(fill="x", pady=(0, 3))
         form_frame.columnconfigure(1, weight=1)
         form_frame.columnconfigure(3, weight=1)
 
@@ -1507,10 +1596,10 @@ class SuperJoyWorkstation:
 
         # Spot-Specific Auto-Parsed Fields (Ad-ID, Title, TRT + Flame Toggle)
         sec2_hdr = tk.Frame(p, bg=BG_CARD)
-        sec2_hdr.pack(fill="x", pady=(4, 2))
+        sec2_hdr.pack(fill="x", pady=(3, 2))
         tk.Label(
             sec2_hdr,
-            text="SPOT FILENAME PARSER (AUTO-PULLED: AD-ID  •  TITLE_WITH_UNDERSCORES  •  TRT 60/30/15/06  •  MULTI-RES)",
+            text="SPOT METADATA (AUTO-PULLED FROM VIDEOS OR CSV  •  OR ENTER MANUALLY FOR STANDALONE SLATES)",
             font=(FONT, 10, "bold"),
             bg=BG_CARD,
             fg=ACCENT_YELLOW,
@@ -1543,7 +1632,7 @@ class SuperJoyWorkstation:
 
         # Multi-Resolution Selector & Retroactive Resolution Override Row
         res_row = tk.Frame(p, bg=BG_CARD)
-        res_row.pack(fill="x", pady=(2, 3))
+        res_row.pack(fill="x", pady=(2, 2))
         tk.Label(
             res_row,
             text="SLATE RES",
@@ -1572,41 +1661,49 @@ class SuperJoyWorkstation:
             bg=BG_BLUE,
             command=self.apply_res_to_selected,
             padx=12,
-            pady=5,
+            pady=4,
         ).pack(side="right")
 
         # Action & Queue Toolbar
         bar = tk.Frame(p, bg=BG_CARD)
-        bar.pack(fill="x", pady=(3, 3))
+        bar.pack(fill="x", pady=(2, 3))
         mkbtn(
             bar,
-            text="Auto-Pull Batch from Master Videos",
+            text="Auto-Pull Videos",
             bg=BG_BLUE,
             command=lambda: self.populate_batch_from_videos(notify_if_empty=True),
-            padx=11,
+            padx=10,
             pady=5,
         ).pack(side="left")
         mkbtn(
             bar,
-            text="+ Add / Update Spot",
-            bg="#4CAF50",
-            command=self.add_to_batch,
-            padx=11,
-            pady=5,
-        ).pack(side="left", padx=(6, 0))
-        mkbtn(
-            bar,
-            text="Cycle Selected Res",
-            bg=BG_GREY,
-            command=self.cycle_selected_resolution,
+            text="Merge CSV/TXT",
+            bg=BG_BLUE,
+            command=self.prompt_and_merge_csv_into_batch,
             padx=10,
             pady=5,
-        ).pack(side="left", padx=(6, 0))
-        mkbtn(bar, text="Remove Selected", bg=BG_GREY, command=self.remove_from_batch, padx=10, pady=5).pack(
-            side="left", padx=(6, 0)
+        ).pack(side="left", padx=(5, 0))
+        mkbtn(
+            bar,
+            text="+ Add / Update",
+            bg="#4CAF50",
+            command=self.add_to_batch,
+            padx=10,
+            pady=5,
+        ).pack(side="left", padx=(5, 0))
+        mkbtn(
+            bar,
+            text="Cycle Res",
+            bg=BG_GREY,
+            command=self.cycle_selected_resolution,
+            padx=9,
+            pady=5,
+        ).pack(side="left", padx=(5, 0))
+        mkbtn(bar, text="Remove", bg=BG_GREY, command=self.remove_from_batch, padx=9, pady=5).pack(
+            side="left", padx=(5, 0)
         )
-        mkbtn(bar, text="Clear Batch", bg=BG_GREY, command=self.clear_batch, padx=10, pady=5).pack(
-            side="left", padx=(6, 0)
+        mkbtn(bar, text="Clear", bg=BG_GREY, command=self.clear_batch, padx=9, pady=5).pack(
+            side="left", padx=(5, 0)
         )
         self.batch_count_lbl = tk.Label(
             bar, text="0 slates in queue", font=(FONT, 11, "bold"), bg=BG_CARD, fg=ACCENT_YELLOW
@@ -1635,6 +1732,88 @@ class SuperJoyWorkstation:
         self.tree.pack(fill="both", expand=True, padx=1, pady=1)
         self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
         self.tree.bind("<ButtonPress-1>", self._on_tree_tap, add="+")
+
+    def _build_tab_marry(self):
+        p = self.tab_marry
+        p.columnconfigure(0, weight=1)
+
+        tk.Label(
+            p,
+            text="MARRY EXISTING SLATES + EXISTING MASTER VIDEOS",
+            font=(FONT, 12, "bold"),
+            bg=BG_CARD,
+            fg=ACCENT_RED,
+        ).pack(anchor="w", pady=(2, 2))
+        marry_desc = tk.Label(
+            p,
+            text="Pairs already-rendered slates (.mov, .mp4, .mxf, .png, .tif, .psd, .jpg) with your Master Videos by Ad-ID (and aspect ratio), optionally applying accurate delivery filenames from a CSV/TSV sheet, and queues the married masters in Adobe Media Encoder.",
+            font=(FONT, 11),
+            bg=BG_CARD,
+            fg=TEXT_MUTED,
+        )
+        marry_desc.pack(anchor="w", pady=(0, 8))
+        bind_auto_wrap(marry_desc, p)
+
+        form = tk.Frame(p, bg=BG_CARD)
+        form.pack(fill="x", pady=2)
+        form.columnconfigure(1, weight=1)
+
+        tk.Label(form, text="EXISTING SLATES", font=(FONT, 11, "bold"), bg=BG_CARD, fg=TEXT_MUTED).grid(
+            row=0, column=0, sticky="w", padx=(0, 10), pady=2
+        )
+        RoundedEntry(form, self.marry_slates_dir, 36).grid(row=0, column=1, sticky="ew", padx=(0, 10), pady=2)
+        mkbtn(
+            form,
+            text="Browse Slates",
+            command=lambda: self._browse_dir(self.marry_slates_dir, "Select Existing Slates Folder"),
+            padx=14,
+            pady=5,
+        ).grid(row=0, column=2, pady=2)
+
+        tk.Label(form, text="CSV / TXT (OPTIONAL)", font=(FONT, 11, "bold"), bg=BG_CARD, fg=TEXT_MUTED).grid(
+            row=1, column=0, sticky="w", padx=(0, 10), pady=2
+        )
+        RoundedEntry(form, self.marry_csv_path, 36).grid(row=1, column=1, sticky="ew", padx=(0, 10), pady=2)
+        mkbtn(
+            form,
+            text="Browse CSV",
+            command=lambda: self._browse_file(self.marry_csv_path, "Select Optional CSV/TSV for Accurate Naming"),
+            padx=14,
+            pady=5,
+        ).grid(row=1, column=2, pady=2)
+
+        mbar = tk.Frame(p, bg=BG_CARD)
+        mbar.pack(fill="x", pady=(4, 4))
+        mkbtn(
+            mbar,
+            text="Scan & Preview Slate ↔ Video Pairs",
+            bg=BG_BLUE,
+            command=self.update_marry_preview,
+            padx=12,
+            pady=5,
+        ).pack(side="left")
+        self.marry_status_lbl = tk.Label(
+            mbar,
+            text="Select Existing Slates folder and Master Videos folder (above) to preview pairs.",
+            font=(FONT, 11, "bold"),
+            bg=BG_CARD,
+            fg=ACCENT_YELLOW,
+        )
+        self.marry_status_lbl.pack(side="left", padx=(12, 0))
+
+        mtree_wrap = tk.Frame(p, bg=BORDER_SUBTLE, bd=0, highlightthickness=0)
+        mtree_wrap.pack(fill="both", expand=True, pady=(2, 0))
+        mcols = ("id", "slate", "video", "output")
+        self.marry_tree = ttk.Treeview(mtree_wrap, columns=mcols, show="headings", height=4)
+        self.marry_tree.heading("id", text="AD-ID")
+        self.marry_tree.heading("slate", text="EXISTING SLATE FILE")
+        self.marry_tree.heading("video", text="MASTER VIDEO FILE")
+        self.marry_tree.heading("output", text="MARRIED DELIVERY FILENAME")
+        self.marry_tree.column("id", width=110, minwidth=85, anchor="w")
+        self.marry_tree.column("slate", width=230, minwidth=150, anchor="w")
+        self.marry_tree.column("video", width=230, minwidth=150, anchor="w")
+        self.marry_tree.column("output", width=270, minwidth=170, anchor="w", stretch=True)
+        self.marry_tree.pack(fill="both", expand=True, padx=1, pady=1)
 
     def _build_tab_unslate(self):
         p = self.tab_unslate
@@ -1740,12 +1919,26 @@ class SuperJoyWorkstation:
         idx = int(val) if val is not None and str(val).isdigit() else int(self.active_tab_var.get())
         self._show_tab(idx)
 
+    def _on_output_mode_changed(self):
+        slates_only = self.output_mode_var.get() == "slates_only"
+        if hasattr(self, "output_mode_hint"):
+            self.output_mode_hint.config(
+                text="Builds 5.0s slates (+ 2-pop) with NO master videos required"
+                if slates_only
+                else "Pairs each slate with its master video",
+                fg=ACCENT_YELLOW if slates_only else TEXT_MUTED,
+            )
+        if str(self.btn_run["state"]) == "normal":
+            self.btn_run.config(text=self.run_label())
+        self.update_asset_badges()
+
     def update_res_label(self):
         w, h = ASPECT_RESOLUTIONS.get(self.aspect_var.get(), (1920, 1080))
         self.res_label.config(text=f"{w}×{h}")
 
     def _on_videos_dir_changed(self):
         self.update_asset_badges()
+        self.update_marry_preview()
         vdir = self.videos_dir.get().strip()
         if vdir and os.path.isdir(vdir):
             self.populate_batch_from_videos(notify_if_empty=False)
@@ -1765,7 +1958,9 @@ class SuperJoyWorkstation:
                 found_keys = [k for k in ASPECT_RESOLUTIONS if k in tpls]
                 found_str = ", ".join(found_keys) or "none"
                 parts.append(f"Templates: {len(found_keys)}/4 ({found_str})")
-        if vdir:
+        if self.output_mode_var.get() == "slates_only":
+            parts.append("Mode: Standalone Slates Only")
+        elif vdir:
             parts.append(f"Videos: {vcnt} found")
         self.asset_status_lbl.config(
             text="  •  ".join(parts) if parts else "Select .aep template & master videos folder",
@@ -1779,8 +1974,14 @@ class SuperJoyWorkstation:
             return
         try:
             rows = parse_metadata_file(path)
+            vdir = self.videos_dir.get().strip()
+            match_note = ""
+            if vdir and os.path.isdir(vdir):
+                all_vids = [f for f in os.listdir(vdir) if f.lower().endswith(VALID_EXTS) and not f.startswith(".")]
+                matched = sum(1 for r in rows if any(ad_id_matches(r.get("id", ""), vf) for vf in all_vids))
+                match_note = f"  •  {matched}/{len(rows)} matched in Master Videos"
             self.file_preview_lbl.config(
-                text=f"Loaded '{os.path.basename(path)}'  •  {len(rows)} slate row(s) ready to pair",
+                text=f"Loaded '{os.path.basename(path)}'  •  {len(rows)} slate row(s){match_note}",
                 fg=ACCENT_YELLOW,
             )
         except Exception as e:
@@ -1798,7 +1999,14 @@ class SuperJoyWorkstation:
         )
 
     def run_label(self):
-        return "UN-SLATE & QUEUE IN AME" if int(self.active_tab_var.get()) == 2 else "GENERATE .AEP & QUEUE IN AME"
+        tab = int(self.active_tab_var.get())
+        if tab == 2:
+            return "UN-SLATE & QUEUE IN AME"
+        if tab == 3:
+            return "MARRY SLATES + VIDEOS & QUEUE IN AME"
+        if self.output_mode_var.get() == "slates_only":
+            return "BUILD STANDALONE SLATES & QUEUE IN AME"
+        return "GENERATE .AEP & QUEUE IN AME"
 
     # ------------------------------------------------------------------
     # Batch Slate Builder (Auto-Pull, Multi-Resolution & Retroactive Edit)
@@ -2129,6 +2337,506 @@ class SuperJoyWorkstation:
         self.batch_count_lbl.config(text=f"{n} slate{'s' if n != 1 else ''} in queue")
 
     # ------------------------------------------------------------------
+    # CSV / TSV + Master Videos Combining & Accurate Filename Renaming
+    # ------------------------------------------------------------------
+    def prompt_and_merge_csv_into_batch(self):
+        """Let the user pick a CSV/TSV/TXT file (or use the currently selected one) and merge its
+        canonical Titles, TRT, Client, Agency, Workspace, Copyright, and Flame flags into the Batch Builder queue."""
+        cur = self.tsv_path.get().strip()
+        if cur and os.path.isfile(cur):
+            self.load_csv_into_batch_builder(csv_path=cur, switch_to_builder=False)
+            return
+
+        def _pick():
+            reset_tk_mouse_state(self.root)
+            chosen = filedialog.askopenfilename(
+                parent=self.root,
+                title="Select CSV / TSV / TXT Metadata File to Merge with Master Videos",
+                filetypes=[("Metadata Files", "*.tsv *.csv *.txt"), ("All Files", "*.*")],
+            )
+            wake_macos_window(self.root)
+            if chosen:
+                self.tsv_path.set(chosen)
+                self.load_csv_into_batch_builder(csv_path=chosen, switch_to_builder=False)
+
+        run_after_mouse_up(self.root, _pick)
+
+    def load_csv_into_batch_builder(self, csv_path=None, switch_to_builder=True):
+        """Combine rows from a CSV/TSV/TXT metadata file with any Master Videos present in MASTER VIDEOS,
+        populating the Batch Slate Builder queue with accurate canonical titles and detected video resolutions."""
+        path = (csv_path or self.tsv_path.get()).strip()
+        if not path or not os.path.isfile(path):
+            self._alert("showwarning", "Metadata File Required", "Please select a .csv, .tsv, or .txt metadata file first.")
+            return 0
+
+        try:
+            csv_rows = parse_metadata_file(path)
+        except Exception as e:
+            self._alert("showerror", "CSV Parse Error", f"Failed to read metadata file:\n{e}")
+            return 0
+
+        if not csv_rows:
+            self._alert("showwarning", "Empty File", "No valid slate rows found in the selected metadata file.")
+            return 0
+
+        vdir = self.videos_dir.get().strip()
+        all_videos = []
+        if vdir and os.path.isdir(vdir):
+            all_videos = sorted(
+                vf for vf in os.listdir(vdir) if vf.lower().endswith(VALID_EXTS) and not vf.startswith(".")
+            )
+
+        # Populate shared campaign fields from the first CSV row that has them
+        first_row = csv_rows[0]
+        self._loading_row = True
+        try:
+            if first_row.get("agency"):
+                self.f_agency.set(first_row["agency"])
+            if first_row.get("client"):
+                self.f_client.set(first_row["client"])
+            if first_row.get("workspace"):
+                self.f_workspace.set(first_row["workspace"])
+            if first_row.get("copyright"):
+                self.f_copyright.set(first_row["copyright"])
+            if first_row.get("date"):
+                self.f_date.set(self._underscored(first_row["date"]))
+            if first_row.get("audio"):
+                self.f_audio.set(first_row["audio"])
+            if first_row.get("flame"):
+                self.f_flame.set(first_row["flame"].lower() in ("y", "yes", "true", "1"))
+        finally:
+            self._loading_row = False
+
+        shared = self._current_campaign_fields()
+        combined_batch = []
+
+        for row in csv_rows:
+            ad_id = row.get("id") or row.get("ad-id") or ""
+            csv_title = self._underscored(row.get("title") or row.get("name") or "")
+            csv_trt = row.get("trt") or ""
+            row_aspect = row.get("aspect") or detect_aspect_from_text(row.get("resolution", "")) or detect_aspect_from_text(csv_title)
+
+            # Match against Master Videos if present to detect video aspect(s) or fill missing title/TRT
+            matched_vids = [vf for vf in all_videos if ad_id and ad_id_matches(ad_id, vf)] if ad_id else []
+            if matched_vids and not row_aspect:
+                # Create an entry for each distinct aspect variant found in Master Videos for this Ad-ID
+                seen_aspects = []
+                for vf in matched_vids:
+                    v_id, v_title, v_trt = parse_video_filename(vf)
+                    vasp = detect_aspect_from_text(vf) or DEFAULT_ASPECT
+                    if vasp not in seen_aspects:
+                        seen_aspects.append(vasp)
+                        entry = self._make_slate_entry(
+                            shared,
+                            ad_id or v_id,
+                            csv_title or v_title,
+                            csv_trt or v_trt,
+                            vasp,
+                            row,
+                        )
+                        combined_batch.append(entry)
+            else:
+                asp = row_aspect or DEFAULT_ASPECT
+                if matched_vids and (not csv_title or not csv_trt):
+                    _, v_title, v_trt = parse_video_filename(matched_vids[0])
+                    csv_title = csv_title or v_title
+                    csv_trt = csv_trt or v_trt
+                entry = self._make_slate_entry(shared, ad_id, csv_title, csv_trt, asp, row)
+                combined_batch.append(entry)
+
+        self.manual_batch_data = combined_batch
+        self._refresh_tree()
+        if switch_to_builder:
+            self.select(1)
+        return len(combined_batch)
+
+    def rename_master_videos_from_metadata(self):
+        """Combine Master Videos with the loaded CSV/TSV metadata (or the Batch Slate Builder queue)
+        to rename master video files on disk to their accurate canonical `<Ad-ID>_<Title>.<ext>` filenames."""
+        vdir = self.videos_dir.get().strip()
+        if not vdir or not os.path.isdir(vdir):
+            self._alert("showwarning", "Master Videos Required", "Please select your Master Videos folder first.")
+            return 0
+
+        rows = []
+        tsv = self.tsv_path.get().strip()
+        if tsv and os.path.isfile(tsv):
+            try:
+                rows = parse_metadata_file(tsv)
+            except Exception as e:
+                self._alert("showerror", "CSV Parse Error", f"Could not read metadata file:\n{e}")
+                return 0
+        elif self.manual_batch_data:
+            rows = [normalize_slate_row(item) for item in self.manual_batch_data]
+
+        if not rows:
+            self._alert(
+                "showwarning",
+                "Metadata Required",
+                "Please select a CSV / TSV metadata file (or populate the Batch Slate Builder queue) first.",
+            )
+            return 0
+
+        all_videos = sorted(
+            vf for vf in os.listdir(vdir) if vf.lower().endswith(VALID_EXTS) and not vf.startswith(".")
+        )
+        if not all_videos:
+            self._alert("showwarning", "No Videos Found", "No .mov, .mp4, or .mxf files found in Master Videos folder.")
+            return 0
+
+        id_counts = {}
+        for r in rows:
+            aid = (r.get("id") or r.get("ad-id") or "").lower()
+            if aid:
+                id_counts[aid] = id_counts.get(aid, 0) + 1
+
+        renamed_log = []
+        renamed_count = 0
+
+        for r in rows:
+            ad_id = r.get("id") or r.get("ad-id") or ""
+            if not ad_id:
+                continue
+            target_aspect = r.get("aspect") or detect_aspect_from_text(r.get("resolution", ""))
+            candidates = [vf for vf in all_videos if ad_id_matches(ad_id, vf)]
+            if not candidates:
+                continue
+
+            chosen_vf = None
+            if target_aspect:
+                for vf in candidates:
+                    if detect_aspect_from_text(vf) == target_aspect:
+                        chosen_vf = vf
+                        break
+            if not chosen_vf:
+                chosen_vf = candidates[0]
+
+            _, ext = os.path.splitext(chosen_vf)
+            multi_aspect = id_counts.get(ad_id.lower(), 0) > 1 or len(candidates) > 1
+            file_aspect = target_aspect or detect_aspect_from_text(chosen_vf)
+            new_stem = build_canonical_delivery_stem(
+                r, target_aspect=file_aspect, include_aspect=multi_aspect, suffix=""
+            )
+            new_fname = f"{new_stem}{ext}"
+            if new_fname == chosen_vf:
+                continue
+
+            src_path = os.path.join(vdir, chosen_vf)
+            dst_path = os.path.join(vdir, new_fname)
+            if os.path.exists(dst_path):
+                continue
+
+            try:
+                os.rename(src_path, dst_path)
+                all_videos = [new_fname if vf == chosen_vf else vf for vf in all_videos]
+                renamed_log.append(f"{chosen_vf}  →  {new_fname}")
+                renamed_count += 1
+            except OSError as e:
+                renamed_log.append(f"[ERROR] {chosen_vf}: {e}")
+
+        self.update_file_preview()
+        if renamed_count > 0:
+            preview = "\n".join(renamed_log[:12])
+            self._alert(
+                "showinfo",
+                "Master Videos Renamed",
+                f"Renamed {renamed_count} master video file(s) to match canonical CSV metadata:\n\n{preview}",
+            )
+        else:
+            self._alert(
+                "showinfo",
+                "No Renames Needed",
+                "All matched master video files already have accurate canonical filenames (or no Ad-ID matches needed renaming).",
+            )
+        return renamed_count
+
+    # ------------------------------------------------------------------
+    # Marry Existing Slates + Existing Master Videos (Tab 3)
+    # ------------------------------------------------------------------
+    def _scan_marry_pairs(self):
+        """Scan `self.marry_slates_dir` and `self.videos_dir` (plus optional `self.marry_csv_path` or `self.tsv_path`)
+        and pair each existing slate file with its matching master video by Ad-ID (and aspect ratio)."""
+        sdir = self.marry_slates_dir.get().strip()
+        vdir = self.videos_dir.get().strip()
+        if not sdir or not os.path.isdir(sdir) or not vdir or not os.path.isdir(vdir):
+            return []
+
+        slate_files = sorted(
+            f for f in os.listdir(sdir) if f.lower().endswith(SLATE_ASSET_EXTS) and not f.startswith(".")
+        )
+        video_files = sorted(
+            f for f in os.listdir(vdir) if f.lower().endswith(VALID_EXTS) and not f.startswith(".")
+        )
+        if not slate_files or not video_files:
+            return []
+
+        # Optional CSV/TSV lookup by Ad-ID for canonical output naming
+        csv_by_id = {}
+        csv_path = self.marry_csv_path.get().strip() or self.tsv_path.get().strip()
+        if csv_path and os.path.isfile(csv_path):
+            try:
+                for r in parse_metadata_file(csv_path):
+                    aid = (r.get("id") or r.get("ad-id") or "").lower()
+                    if aid:
+                        csv_by_id[aid] = r
+            except Exception:
+                pass
+
+        pairs = []
+        used_slate_Video_keys = set()
+
+        for sf in slate_files:
+            s_stem = re.sub(r"(?i)[_\-\s]*slate[ds]?$", "", os.path.splitext(sf)[0]).strip("_- ")
+            s_id, s_title, _ = parse_video_filename(s_stem)
+            s_aspect = detect_aspect_from_text(sf)
+            if not s_id:
+                continue
+
+            # Find master videos matching this slate's Ad-ID
+            candidates = [vf for vf in video_files if ad_id_matches(s_id, vf)]
+            if not candidates:
+                continue
+
+            matched_vf = None
+            if s_aspect:
+                for vf in candidates:
+                    if detect_aspect_from_text(vf) == s_aspect:
+                        matched_vf = vf
+                        break
+            if not matched_vf:
+                matched_vf = candidates[0]
+
+            pair_key = (sf, matched_vf)
+            if pair_key in used_slate_Video_keys:
+                continue
+            used_slate_Video_keys.add(pair_key)
+
+            v_id, v_title, _ = parse_video_filename(matched_vf)
+            eff_aspect = s_aspect or detect_aspect_from_text(matched_vf)
+            csv_row = csv_by_id.get(s_id.lower()) or csv_by_id.get(v_id.lower())
+
+            if csv_row:
+                out_stem = build_canonical_delivery_stem(
+                    csv_row, target_aspect=eff_aspect, include_aspect=bool(eff_aspect), suffix="Slated"
+                )
+            else:
+                base_stem = os.path.splitext(matched_vf)[0]
+                clean_base = re.sub(r"(?i)[_\-\s]*slated$", "", base_stem).strip("_- ")
+                out_stem = f"{clean_base}_Slated"
+
+            out_name = f"{out_stem}.mov"
+            pairs.append(
+                {
+                    "id": s_id,
+                    "slate_name": sf,
+                    "slate_path": os.path.join(sdir, sf),
+                    "video_name": matched_vf,
+                    "video_path": os.path.join(vdir, matched_vf),
+                    "output_name": out_name,
+                    "aspect": eff_aspect or DEFAULT_ASPECT,
+                }
+            )
+
+        return pairs
+
+    def update_marry_preview(self):
+        if not hasattr(self, "marry_tree"):
+            return
+        for item in self.marry_tree.get_children():
+            self.marry_tree.delete(item)
+
+        sdir = self.marry_slates_dir.get().strip()
+        vdir = self.videos_dir.get().strip()
+        if not sdir or not os.path.isdir(sdir) or not vdir or not os.path.isdir(vdir):
+            self.marry_pairs_data = []
+            self.marry_status_lbl.config(
+                text="Select Existing Slates folder and Master Videos folder (above) to preview pairs.",
+                fg=TEXT_MUTED,
+            )
+            return
+
+        pairs = self._scan_marry_pairs()
+        self.marry_pairs_data = pairs
+        for p in pairs:
+            self.marry_tree.insert(
+                "",
+                "end",
+                values=(p["id"], p["slate_name"], p["video_name"], p["output_name"]),
+            )
+        self.marry_status_lbl.config(
+            text=f"Matched {len(pairs)} Slate ↔ Master Video pair(s) ready to marry in AE + AME",
+            fg=ACCENT_YELLOW if pairs else ACCENT_RED,
+        )
+
+    def process_marry(self, pairs, slates_dir, videos_dir, settings):
+        output_dir = os.path.join(videos_dir, "MARRIED_DELIVERY")
+        os.makedirs(output_dir, exist_ok=True)
+        aep_marry_path = os.path.join(output_dir, "SuperJoy_Married_Slates.aep")
+        beep_path = os.path.join(output_dir, "_2pop_1kHz_1frame.wav")
+        jsx_path = os.path.join(output_dir, "_temp_ae_marry.jsx")
+        log_path = os.path.join(output_dir, "Marry_Results_Log.txt")
+
+        create_beep_wav(beep_path)
+
+        marry_jobs = []
+        log_lines = [
+            "SUPERJOY AE/AME MARRY EXISTING SLATES + VIDEOS LOG",
+            "=" * 52,
+            f"Slates Folder: {slates_dir}",
+            f"Videos Folder: {videos_dir}",
+            f"Output Folder: {output_dir}",
+            "",
+        ]
+        for p in pairs:
+            final_out = os.path.join(output_dir, p["output_name"])
+            marry_jobs.append(
+                {
+                    "id": p["id"],
+                    "slate_path": p["slate_path"],
+                    "video_path": p["video_path"],
+                    "final_output": final_out,
+                    "comp_name": os.path.splitext(p["output_name"])[0],
+                }
+            )
+            log_lines.append(f"[MARRIED] {p['slate_name']} + {p['video_name']} -> {p['output_name']}")
+
+        try:
+            with open(log_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(log_lines))
+        except OSError:
+            pass
+
+        self.write_marry_jsx(jsx_path, marry_jobs, aep_marry_path, beep_path, settings)
+
+        ae_target = resolve_ae_applescript_target()
+        applescript = f'''
+        on run argv
+            set jsxPath to POSIX file (item 1 of argv)
+            tell {ae_target}
+                activate
+                DoScriptFile jsxPath
+            end tell
+        end run
+        '''
+
+        try:
+            subprocess.run(
+                ["osascript", "-e", applescript, jsx_path],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=3600,
+            )
+            msg = (
+                f"Married {len(marry_jobs)} existing slate(s) + master video(s) and queued in AME!\n\n"
+                f"Editable Project:\n{aep_marry_path}\n\n"
+                f"Output Folder:\n{output_dir}"
+            )
+            self.root.after(0, lambda: self._alert("showinfo", "Marry Complete", msg))
+        except subprocess.CalledProcessError as e:
+            err = (e.stderr or str(e)).strip()
+            self.root.after(
+                0,
+                lambda: self._alert("showerror", "AE/AME Error", f"Failed to execute Marry script:\n{err}"),
+            )
+        except Exception as e:
+            self.root.after(
+                0,
+                lambda: self._alert("showerror", "AE/AME Error", f"Failed to execute Marry script:\n{str(e)}"),
+            )
+        finally:
+            self.root.after(0, self.reset_ui)
+
+    def write_marry_jsx(self, path, marry_jobs, aep_path, beep_path, settings):
+        jobs_json = json.dumps(marry_jobs)
+        settings_json = json.dumps(settings)
+        jsx_code = f"""
+        var jobs = {jobs_json};
+        var cfg = {settings_json};
+        var beepFile = new File({json.dumps(beep_path)});
+
+        try {{
+            if (app.project) {{
+                app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+            }}
+        }} catch (eClose) {{}}
+
+        app.newProject();
+        app.beginUndoGroup("Batch Marry Existing Slates + Videos");
+
+        var masterFolder = app.project.items.addFolder("Married Slated Comps");
+        var assetsFolder = app.project.items.addFolder("Imported Slates & Masters");
+        assetsFolder.parentFolder = masterFolder;
+
+        var beepItem = null;
+        if (beepFile.exists) {{
+            beepItem = app.project.importFile(new ImportOptions(beepFile));
+            beepItem.parentFolder = assetsFolder;
+        }}
+
+        for (var i = 0; i < jobs.length; i++) {{
+            var job = jobs[i];
+            var slateFile = new File(job.slate_path);
+            var vidFile = new File(job.video_path);
+            if (!slateFile.exists || !vidFile.exists) continue;
+
+            var slateItem = app.project.importFile(new ImportOptions(slateFile));
+            slateItem.parentFolder = assetsFolder;
+            var vidItem = app.project.importFile(new ImportOptions(vidFile));
+            vidItem.parentFolder = assetsFolder;
+
+            var compW = vidItem.width > 0 ? vidItem.width : (slateItem.width > 0 ? slateItem.width : cfg.width);
+            var compH = vidItem.height > 0 ? vidItem.height : (slateItem.height > 0 ? slateItem.height : cfg.height);
+            var compFps = vidItem.frameRate > 0 ? vidItem.frameRate : (slateItem.frameRate > 0 ? slateItem.frameRate : cfg.fps);
+            var totalDuration = 7.0 + vidItem.duration;
+
+            var masterComp = app.project.items.addComp(job.comp_name, compW, compH, 1.0, totalDuration, compFps);
+            masterComp.parentFolder = masterFolder;
+            masterComp.displayStartTime = 3593.0; // 00:59:53:00
+
+            var blackSolid = masterComp.layers.addSolid([0,0,0], "2s_Black", compW, compH, 1.0, 2.0);
+            blackSolid.startTime = 5.0;
+
+            var slateLayer = masterComp.layers.add(slateItem);
+            slateLayer.startTime = 0.0;
+            // If the pre-rendered slate clip is >= 5.04s (already includes 2-pop at 5.0s) or >= 7.0s (includes black + 2-pop),
+            // preserve its native 2-pop; otherwise trim still/5s clip at 5.0s and insert the 1-frame 1kHz 2-pop at 5.0s.
+            if (slateItem.duration && slateItem.duration >= 5.0 + masterComp.frameDuration) {{
+                slateLayer.outPoint = Math.min(7.0, slateItem.duration);
+            }} else {{
+                slateLayer.outPoint = 5.0;
+                if (beepItem) {{
+                    var beepLayer = masterComp.layers.add(beepItem);
+                    beepLayer.startTime = 5.0;
+                    beepLayer.outPoint = 5.0 + masterComp.frameDuration;
+                }}
+            }}
+
+            if (slateItem.width > 0 && slateItem.height > 0 && (slateItem.width !== compW || slateItem.height !== compH)) {{
+                var sx = (compW / slateItem.width) * 100.0;
+                var sy = (compH / slateItem.height) * 100.0;
+                var sUniform = Math.min(sx, sy);
+                slateLayer.property("Scale").setValue([sUniform, sUniform]);
+            }}
+
+            var vidLayer = masterComp.layers.add(vidItem);
+            vidLayer.startTime = 7.0;
+            vidLayer.property("Scale").setValue([100, 100]);
+
+            var rqItem = app.project.renderQueue.items.add(masterComp);
+            var outMod = rqItem.outputModule(1);
+            outMod.file = new File(job.final_output);
+        }}
+
+        var aepFile = new File({json.dumps(aep_path)});
+        app.project.save(aepFile);
+        app.project.renderQueue.queueInAME(false);
+        app.endUndoGroup();
+        """
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(jsx_code)
+
+    # ------------------------------------------------------------------
     # Workflow Execution
     # ------------------------------------------------------------------
     def execute_workflow_thread(self):
@@ -2152,11 +2860,38 @@ class SuperJoyWorkstation:
             ).start()
             return
 
+        if tab == 3:
+            sdir = self.marry_slates_dir.get().strip()
+            vdir = self.videos_dir.get().strip()
+            if not sdir or not os.path.isdir(sdir):
+                self._alert("showerror", "Error", "Please select your Existing Slates folder.")
+                return
+            if not vdir or not os.path.isdir(vdir):
+                self._alert("showerror", "Error", "Please select your Master Videos folder in the top panel.")
+                return
+            pairs = self._scan_marry_pairs()
+            if not pairs:
+                self._alert("showwarning", "No Pairs Found", "No matching Ad-ID pairs found between Existing Slates and Master Videos.")
+                return
+            self.btn_run.config(text="PROCESSING...", state="disabled")
+            threading.Thread(
+                target=self.process_marry, args=(pairs, sdir, vdir, self.render_settings), daemon=True
+            ).start()
+            return
+
         template_dir = self.template_dir.get().strip()
         videos_dir = self.videos_dir.get().strip()
+        slates_only = self.output_mode_var.get() == "slates_only"
 
-        if not template_dir or not videos_dir:
-            self._alert("showerror", "Error", "Please select your Slate Template (.aep) and Master Videos folder.")
+        if not template_dir:
+            self._alert("showerror", "Error", "Please select your Slate Template (.aep).")
+            return
+        if not slates_only and (not videos_dir or not os.path.isdir(videos_dir)):
+            self._alert(
+                "showerror",
+                "Master Videos Required",
+                "Please select your Master Videos folder, or switch BUILD OUTPUT MODE to 'Standalone Slates Only'.",
+            )
             return
 
         batch_jobs_data = []
@@ -2175,17 +2910,23 @@ class SuperJoyWorkstation:
                 return
         else:
             # Auto-pull from Master Videos if queue is empty when running from Batch Slate Builder
-            if not self.manual_batch_data and os.path.isdir(videos_dir):
+            if not self.manual_batch_data and videos_dir and os.path.isdir(videos_dir):
                 self.populate_batch_from_videos(notify_if_empty=False)
             if not self.manual_batch_data:
-                self._alert("showerror", "Error", "Your batch queue is empty and no master videos were found.")
+                self._alert(
+                    "showerror",
+                    "Empty Queue",
+                    "Your batch queue is empty. Add spots manually, load a CSV/TSV, or select a Master Videos folder.",
+                )
                 return
             self._sync_shared_fields_to_batch()
             batch_jobs_data = [normalize_slate_row(item) for item in self.manual_batch_data]
 
         self.btn_run.config(text="PROCESSING...", state="disabled")
         threading.Thread(
-            target=self.process_batch, args=(batch_jobs_data, template_dir, videos_dir), daemon=True
+            target=self.process_batch,
+            args=(batch_jobs_data, template_dir, videos_dir, slates_only),
+            daemon=True,
         ).start()
 
     # ------------------------------------------------------------------
@@ -2355,9 +3096,9 @@ class SuperJoyWorkstation:
             f.write(jsx_code)
 
     # ------------------------------------------------------------------
-    # Slate (After Effects + AME Queue)
+    # Slate (After Effects + AME Queue — Supports Slated Masters & Standalone Slates Only)
     # ------------------------------------------------------------------
-    def process_batch(self, batch_data, template_dir, videos_dir):
+    def process_batch(self, batch_data, template_dir, videos_dir, slates_only=False):
         templates = find_templates(template_dir)
         if not templates:
             self.root.after(
@@ -2371,12 +3112,29 @@ class SuperJoyWorkstation:
             self.root.after(0, self.reset_ui)
             return
 
-        output_dir = os.path.join(videos_dir, "SLATED_DELIVERY")
+        # Determine base output directory even when building Standalone Slates Only without a Master Videos folder
+        if videos_dir and os.path.isdir(videos_dir):
+            base_out_parent = videos_dir
+        elif self.tsv_path.get().strip() and os.path.isfile(self.tsv_path.get().strip()):
+            base_out_parent = os.path.dirname(self.tsv_path.get().strip())
+        elif os.path.isfile(template_dir):
+            base_out_parent = os.path.dirname(template_dir)
+        else:
+            base_out_parent = template_dir
+
+        subfolder_name = "STANDALONE_SLATES" if slates_only else "SLATED_DELIVERY"
+        output_dir = os.path.join(base_out_parent, subfolder_name)
         os.makedirs(output_dir, exist_ok=True)
         log_path = os.path.join(output_dir, "Slating_Results_Log.txt")
-        aep_master_path = os.path.join(output_dir, "SuperJoy_Master_Slates.aep")
+        aep_master_path = os.path.join(
+            output_dir, "SuperJoy_Standalone_Slates.aep" if slates_only else "SuperJoy_Master_Slates.aep"
+        )
         beep_path = os.path.join(output_dir, "_2pop_1kHz_1frame.wav")
-        log_entries = ["SUPERJOY AE/AME SLATING RESULTS LOG", "=" * 40, ""]
+        log_entries = [
+            f"SUPERJOY AE/AME {'STANDALONE SLATES' if slates_only else 'SLATING'} RESULTS LOG",
+            "=" * 48,
+            "",
+        ]
 
         ae_jobs = []
         success_count = 0
@@ -2388,9 +3146,11 @@ class SuperJoyWorkstation:
             aid = d.get("id", d.get("ad-id", "")).lower()
             id_counts[aid] = id_counts.get(aid, 0) + 1
 
-        all_videos = sorted(
-            vf for vf in os.listdir(videos_dir) if vf.lower().endswith(VALID_EXTS) and not vf.startswith(".")
-        )
+        all_videos = []
+        if not slates_only and videos_dir and os.path.isdir(videos_dir):
+            all_videos = sorted(
+                vf for vf in os.listdir(videos_dir) if vf.lower().endswith(VALID_EXTS) and not vf.startswith(".")
+            )
 
         for raw_data in batch_data:
             data = normalize_slate_row(raw_data)
@@ -2399,6 +3159,31 @@ class SuperJoyWorkstation:
             flame_flag = data.get("flame", "").lower() in ("y", "yes", "true", "1")
             explicit_aspect = data.get("aspect") or detect_aspect_from_text(data.get("resolution", ""))
             target_aspect = explicit_aspect if explicit_aspect in ASPECT_RESOLUTIONS else None
+            multi_aspect = id_counts.get(ad_id.lower(), 0) > 1
+
+            if slates_only:
+                asp = target_aspect or self.aspect_var.get() or DEFAULT_ASPECT
+                tw, th = ASPECT_RESOLUTIONS.get(asp, (1920, 1080))
+                out_stem = build_canonical_delivery_stem(
+                    data, target_aspect=asp, include_aspect=multi_aspect, suffix="Slate"
+                )
+                final_output_file = os.path.join(output_dir, f"{out_stem}.mov")
+                job_entry = {
+                    "video_path": "",
+                    "slate_only": True,
+                    "final_output": final_output_file,
+                    "flame": flame_flag,
+                    "text_data": data,
+                    "aspect": asp,
+                    "width": tw,
+                    "height": th,
+                }
+                ae_jobs.append(job_entry)
+                log_entries.append(
+                    f"[SUCCESS] Standalone Slate {ad_id} [{format_resolution_label(asp)}] -> {os.path.basename(final_output_file)}"
+                )
+                success_count += 1
+                continue
 
             # Prefer a master video that matches both Ad-ID and the target aspect token, falling back to Ad-ID match
             candidates = [vf for vf in all_videos if ad_id_matches(ad_id, vf)]
@@ -2419,13 +3204,14 @@ class SuperJoyWorkstation:
                 error_count += 1
                 continue
 
-            if id_counts.get(ad_id.lower(), 0) > 1 and target_aspect:
-                final_output_file = os.path.join(output_dir, f"{ad_id}_{target_aspect}_Slated.mov")
-            else:
-                final_output_file = os.path.join(output_dir, f"{ad_id}_Slated.mov")
+            out_stem = build_canonical_delivery_stem(
+                data, target_aspect=target_aspect, include_aspect=multi_aspect, suffix="Slated"
+            )
+            final_output_file = os.path.join(output_dir, f"{out_stem}.mov")
 
             job_entry = {
                 "video_path": matched_video,
+                "slate_only": False,
                 "final_output": final_output_file,
                 "flame": flame_flag,
                 "text_data": data,
@@ -2438,7 +3224,9 @@ class SuperJoyWorkstation:
 
             ae_jobs.append(job_entry)
             res_note = f" [{format_resolution_label(target_aspect)}]" if target_aspect else ""
-            log_entries.append(f"[SUCCESS] Paired {ad_id}{res_note} -> {os.path.basename(matched_video)}")
+            log_entries.append(
+                f"[SUCCESS] Paired {ad_id}{res_note} -> {os.path.basename(matched_video)} => {os.path.basename(final_output_file)}"
+            )
             success_count += 1
 
         with open(log_path, "w", encoding="utf-8") as f:
@@ -2478,8 +3266,9 @@ class SuperJoyWorkstation:
                 text=True,
                 timeout=3600,
             )
+            mode_desc = "Standalone Slates Project" if slates_only else "Master Slated Project"
             msg = (
-                f"Successfully generated Master Project ({success_count} slates) and queued in AME!\n\n"
+                f"Successfully generated {mode_desc} ({success_count} slate(s)) and queued in AME!\n\n"
                 f"Review log at:\n{log_path}"
             )
             self.root.after(0, lambda: self._alert("showinfo", "Complete", msg))
@@ -2532,19 +3321,6 @@ class SuperJoyWorkstation:
         }}
 
         // Resolve which dynamic field a TextLayer represents without ever touching the static left-column labels!
-        // In sj_Slates From Spreadsheet_Template_005.aep:
-        //   Static left-column labels are: AGENCY, CLIENT, TITLE, ID, TRT, DATE, WORKSPACE, AUDIO, COPYRIGHT (layers 18..26)
-        //   Dynamic right-column value layers are:
-        //     1: ^NFA
-        //     2: THE MARTIN AGENCY  (has expression `name` on Source Text)
-        //     3: ^Client
-        //     4: ^Title
-        //     5: ^Ad-ID
-        //     6: ^TRT
-        //     7: ^date
-        //     8: ^WORKSPACE_ARTIST
-        //     9: STEREO             (has expression `name` on Source Text)
-        //    10: ^Copyright         (has expression `text.sourceText` on Source Text)
         function resolveFieldValue(layer, td) {{
             var rawName = String(layer.name);
             var trimmed = rawName.replace(/^\\s+|\\s+$/g, "");
@@ -2619,7 +3395,6 @@ class SuperJoyWorkstation:
             var textDoc = textProp.value;
             var baseFontSize = textDoc.fontSize || 27;
 
-            // If the layer is paragraph/box text, widen the box first so AE never wraps long unbroken strings onto line 2
             try {{
                 if (textDoc.boxText) {{
                     textDoc.boxTextSize = [4000, 300];
@@ -2629,7 +3404,6 @@ class SuperJoyWorkstation:
             textDoc.text = newText;
             textProp.setValue(textDoc);
 
-            // Auto-fit font size when a long title/Ad-ID/client exceeds the available right-column width (630px)
             if (newText && newText.length > 0 && maxWidthPx > 0) {{
                 try {{
                     var rect = layer.sourceRectAtTime(2.0, false);
@@ -2650,7 +3424,6 @@ class SuperJoyWorkstation:
         // Populate all dynamic text and Flame layers inside a slate composition.
         function populateSlateComp(slateComp, job, solidComps) {{
             var td = job.text_data || {{}};
-            // Right-column value width inside the red grid is ~630px across 16x9, 1x1, 4x5, and 9x16
             var maxLineW = (slateComp.width >= 1920) ? 630 : 620;
 
             for (var l = 1; l <= slateComp.numLayers; l++) {{
@@ -2678,7 +3451,6 @@ class SuperJoyWorkstation:
             }}
         }}
 
-        // Close any open project without saving, then either open the .aep Slate Template or create a new project.
         try {{
             if (app.project) {{
                 app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
@@ -2723,30 +3495,34 @@ class SuperJoyWorkstation:
 
         for (var i = 0; i < jobs.length; i++) {{
             var job = jobs[i];
+            var isSlateOnly = (job.slate_only === true || !job.video_path);
+            var vidItem = null;
+            var vidAspect = job.aspect ? job.aspect : "16x9";
 
-            var ioVid = new ImportOptions(new File(job.video_path));
-            var vidItem = app.project.importFile(ioVid);
-            vidItem.parentFolder = masterFolder;
+            if (!isSlateOnly) {{
+                var ioVid = new ImportOptions(new File(job.video_path));
+                vidItem = app.project.importFile(ioVid);
+                vidItem.parentFolder = masterFolder;
+                vidAspect = pickAspect(vidItem.width, vidItem.height);
+            }}
 
-            // Use explicit per-slate aspect override if set in Batch Slate Builder; otherwise auto-detect from video.
-            var vidAspect = pickAspect(vidItem.width, vidItem.height);
             var tplKey = job.aspect ? job.aspect : vidAspect;
             var slateComp = null;
+            var slateId = (job.text_data && (job.text_data["id"] || job.text_data["ad-id"])) ? (job.text_data["id"] || job.text_data["ad-id"]) : ("Slate_" + (i + 1));
 
             if (usingAepTemplate) {{
                 var baseTplComp = templateComps[tplKey];
                 if (!baseTplComp) {{
-                    skipped.push(vidItem.name + " (missing " + tplKey + " comp in .aep template)");
+                    skipped.push(slateId + " (missing " + tplKey + " comp in .aep template)");
                     continue;
                 }}
                 slateComp = baseTplComp.duplicate();
-                var slateId = (job.text_data && (job.text_data["id"] || job.text_data["ad-id"])) ? (job.text_data["id"] || job.text_data["ad-id"]) : ("Slate_" + (i + 1));
                 slateComp.name = slateId + "_" + tplKey + "_SLATE";
                 slateComp.parentFolder = slatesFolder;
             }} else {{
                 var tplPath = templates[tplKey];
                 if (!tplPath) {{
-                    skipped.push(vidItem.name + " (needs " + tplKey + " template)");
+                    skipped.push(slateId + " (needs " + tplKey + " template)");
                     continue;
                 }}
                 var ioPSD = new ImportOptions(new File(tplPath));
@@ -2762,12 +3538,22 @@ class SuperJoyWorkstation:
                 populateSlateComp(slateComp, job, solidComps);
             }}
 
-            // Conform to main video resolution when matching aspect, or use explicit slate resolution override.
+            // Standalone Slate Only mode: queue the populated slateComp directly in AME without attaching a master video!
+            if (isSlateOnly) {{
+                if (slateComp) {{
+                    var rqSlate = app.project.renderQueue.items.add(slateComp);
+                    var outSlate = rqSlate.outputModule(1);
+                    outSlate.file = new File(job.final_output);
+                }}
+                continue;
+            }}
+
+            // Slated Master mode (Slate + 2-Pop + 2s Black + Master Video):
             var compW = (job.aspect && job.aspect !== vidAspect && job.width) ? job.width : (vidItem.width > 0 ? vidItem.width : cfg.width);
             var compH = (job.aspect && job.aspect !== vidAspect && job.height) ? job.height : (vidItem.height > 0 ? vidItem.height : cfg.height);
             var compFps = vidItem.frameRate > 0 ? vidItem.frameRate : cfg.fps;
             var totalDuration = 7.0 + vidItem.duration;
-            var compName = job.aspect ? (vidItem.name + "_" + job.aspect + "_SLATED") : (vidItem.name + "_SLATED");
+            var compName = job.aspect ? (slateId + "_" + job.aspect + "_SLATED") : (slateId + "_SLATED");
             var masterComp = app.project.items.addComp(compName, compW, compH, 1.0, totalDuration, compFps);
             masterComp.parentFolder = masterFolder;
 
@@ -2778,8 +3564,6 @@ class SuperJoyWorkstation:
 
             var slateLayer = masterComp.layers.add(slateComp);
             slateLayer.startTime = 0;
-            // Native .aep template comps include the 1-frame 2-pop smiley & Tone at 5.0s (frame 120),
-            // so extend outPoint to 5.0 + 1 frame; for legacy PSD comps trim at 5.0s and add beepItem.
             if (usingAepTemplate) {{
                 slateLayer.outPoint = 5.0 + masterComp.frameDuration;
             }} else {{
@@ -2791,7 +3575,6 @@ class SuperJoyWorkstation:
                 }}
             }}
 
-            // Auto-fit slate precomp if master video resolution is 4K/UHD of the same aspect
             if (slateComp.width !== compW || slateComp.height !== compH) {{
                 var sx = (compW / slateComp.width) * 100.0;
                 var sy = (compH / slateComp.height) * 100.0;
