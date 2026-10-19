@@ -3980,6 +3980,19 @@ class SuperJoyWorkstation:
             beepItem.parentFolder = assetsFolder;
         }}
 
+        function hasTwoPopLeader(item, fps) {{
+            if (!item) return false;
+            try {{
+                var dispSec = item.displayStartTime;
+                var tcStr = timeToCurrentFormat(dispSec, fps).replace(/;/g, ":");
+                if (tcStr.indexOf("00:59:58:") === 0) return true;
+                if (Math.abs(dispSec - 3598.0) < 0.2) return true;
+                var tcTarget = currentFormatToTime("00:59:58:00", fps);
+                if (Math.abs(dispSec - tcTarget) < 0.1) return true;
+            }} catch (eTcCheck) {{}}
+            return false;
+        }}
+
         for (var i = 0; i < jobs.length; i++) {{
             var job = jobs[i];
             var slateFile = new File(job.slate_path);
@@ -3995,24 +4008,42 @@ class SuperJoyWorkstation:
             var compH = vidItem.height > 0 ? vidItem.height : (slateItem.height > 0 ? slateItem.height : cfg.height);
             var compFps = vidItem.frameRate > 0 ? vidItem.frameRate : (slateItem.frameRate > 0 ? slateItem.frameRate : cfg.fps);
             var nominalFps = Math.round(compFps);
+            var videoHas2Pop = hasTwoPopLeader(vidItem, compFps);
+
             var slateFrames = Math.round(5.0 * nominalFps);
-            var headFrames = Math.round(7.0 * nominalFps);
             var slateDuration = slateFrames / compFps;
-            var headDuration = headFrames / compFps;
-            var blackDuration = (headFrames - slateFrames) / compFps;
-            var totalDuration = headDuration + vidItem.duration;
+            var headDuration = 0;
+            var totalDuration = 0;
+
+            if (videoHas2Pop) {{
+                // Video already starts at 00:59:58:00 (has 2-pop + 2s black leader with picture at 01:00:00:00).
+                // Prepend only the 5.0s slate so master comp starts at 00:59:53:00 and picture lands at 01:00:00:00.
+                headDuration = slateDuration;
+                totalDuration = headDuration + vidItem.duration;
+            }} else {{
+                // Video starts at 01:00:00:00 (clean master with no 2-pop leader).
+                // Add standard 7.0s leader: 5.0s slate + 2-pop + 2.0s black.
+                var headFrames = Math.round(7.0 * nominalFps);
+                headDuration = headFrames / compFps;
+                totalDuration = headDuration + vidItem.duration;
+            }}
 
             var masterComp = app.project.items.addComp(job.comp_name, compW, compH, 1.0, totalDuration, compFps);
             masterComp.parentFolder = masterFolder;
             setCompStartTimecode(masterComp, "00:59:53:00");
 
-            var blackSolid = masterComp.layers.addSolid([0,0,0], "2s_Black", compW, compH, 1.0, blackDuration);
-            blackSolid.startTime = slateDuration;
-            blackSolid.outPoint = headDuration;
+            if (!videoHas2Pop) {{
+                var blackDuration = headDuration - slateDuration;
+                var blackSolid = masterComp.layers.addSolid([0,0,0], "2s_Black", compW, compH, 1.0, blackDuration);
+                blackSolid.startTime = slateDuration;
+                blackSolid.outPoint = headDuration;
+            }}
 
             var slateLayer = masterComp.layers.add(slateItem);
             slateLayer.startTime = 0.0;
-            if (slateItem.duration && slateItem.duration >= slateDuration + masterComp.frameDuration) {{
+            if (videoHas2Pop) {{
+                slateLayer.outPoint = slateDuration;
+            }} else if (slateItem.duration && slateItem.duration >= slateDuration + masterComp.frameDuration) {{
                 slateLayer.outPoint = Math.min(headDuration, slateItem.duration);
             }} else {{
                 slateLayer.outPoint = slateDuration;
@@ -4042,11 +4073,28 @@ class SuperJoyWorkstation:
 
             if (job.unslated_prores_output || job.unslated_h264_output) {{
                 var cleanCompName = job.unslated_comp_name || (job.comp_name + "_UNSLATED");
-                var cleanComp = app.project.items.addComp(cleanCompName, compW, compH, 1.0, vidItem.duration, compFps);
-                cleanComp.parentFolder = unslatedFolder;
-                setCompStartTimecode(cleanComp, "01:00:00:00");
-                var cleanVidLayer = cleanComp.layers.add(vidItem);
-                cleanVidLayer.startTime = 0.0;
+                var cleanComp = null;
+                var cleanVidLayer = null;
+                if (videoHas2Pop) {{
+                    // Video has a 2-pop leader (starts at 00:59:58:00). Trim the first 2.0s so picture begins at 01:00:00:00.
+                    var twoSecFrames = Math.round(2.0 * nominalFps);
+                    var twoSecDur = twoSecFrames / compFps;
+                    var cleanDuration = Math.max(masterComp.frameDuration, vidItem.duration - twoSecDur);
+                    cleanComp = app.project.items.addComp(cleanCompName, compW, compH, 1.0, cleanDuration, compFps);
+                    cleanComp.parentFolder = unslatedFolder;
+                    setCompStartTimecode(cleanComp, "01:00:00:00");
+                    cleanVidLayer = cleanComp.layers.add(vidItem);
+                    cleanVidLayer.startTime = -twoSecDur;
+                    cleanVidLayer.inPoint = 0.0;
+                    cleanVidLayer.outPoint = cleanDuration;
+                }} else {{
+                    // Clean video without leader starts directly at 01:00:00:00.
+                    cleanComp = app.project.items.addComp(cleanCompName, compW, compH, 1.0, vidItem.duration, compFps);
+                    cleanComp.parentFolder = unslatedFolder;
+                    setCompStartTimecode(cleanComp, "01:00:00:00");
+                    cleanVidLayer = cleanComp.layers.add(vidItem);
+                    cleanVidLayer.startTime = 0.0;
+                }}
                 cleanVidLayer.property("Scale").setValue([100, 100]);
                 queueProResAndH264(cleanComp, job.unslated_prores_output || "", job.unslated_h264_output || "");
             }}
@@ -5034,6 +5082,19 @@ open "{primary_target}"
             }}
         }}
 
+        function hasTwoPopLeader(item, fps) {{
+            if (!item) return false;
+            try {{
+                var dispSec = item.displayStartTime;
+                var tcStr = timeToCurrentFormat(dispSec, fps).replace(/;/g, ":");
+                if (tcStr.indexOf("00:59:58:") === 0) return true;
+                if (Math.abs(dispSec - 3598.0) < 0.2) return true;
+                var tcTarget = currentFormatToTime("00:59:58:00", fps);
+                if (Math.abs(dispSec - tcTarget) < 0.1) return true;
+            }} catch (eTcCheck) {{}}
+            return false;
+        }}
+
         function setCompStartTimecode(c, tcString) {{
             try {{
                 var t = currentFormatToTime(tcString, c.frameRate);
@@ -5339,25 +5400,43 @@ open "{primary_target}"
             var compH = (vidItem.height > 0) ? vidItem.height : (job.height ? job.height : cfg.height);
             var compFps = vidItem.frameRate > 0 ? vidItem.frameRate : cfg.fps;
             var nominalFps = Math.round(compFps);
+            var videoHas2Pop = hasTwoPopLeader(vidItem, compFps);
+
             var slateFrames = Math.round(5.0 * nominalFps);
-            var headFrames = Math.round(7.0 * nominalFps);
             var slateDuration = slateFrames / compFps;
-            var headDuration = headFrames / compFps;
-            var blackDuration = (headFrames - slateFrames) / compFps;
-            var totalDuration = headDuration + vidItem.duration;
+            var headDuration = 0;
+            var totalDuration = 0;
+
+            if (videoHas2Pop) {{
+                // Video already starts at 00:59:58:00 (has 2-pop + 2s black leader with picture at 01:00:00:00).
+                // Prepend only the 5.0s slate so master comp starts at 00:59:53:00 and picture lands at 01:00:00:00.
+                headDuration = slateDuration;
+                totalDuration = headDuration + vidItem.duration;
+            }} else {{
+                // Video starts at 01:00:00:00 (clean master with no 2-pop leader).
+                // Add standard 7.0s leader: 5.0s slate + 2-pop + 2.0s black.
+                var headFrames = Math.round(7.0 * nominalFps);
+                headDuration = headFrames / compFps;
+                totalDuration = headDuration + vidItem.duration;
+            }}
 
             var compName = job.aspect ? (slateId + "_" + job.aspect + "_SLATED") : (slateId + "_SLATED");
             var masterComp = app.project.items.addComp(compName, compW, compH, 1.0, totalDuration, compFps);
             masterComp.parentFolder = masterFolder;
             setCompStartTimecode(masterComp, "00:59:53:00");
 
-            var blackSolid = masterComp.layers.addSolid([0,0,0], "2s_Black", compW, compH, 1.0, blackDuration);
-            blackSolid.startTime = slateDuration;
-            blackSolid.outPoint = headDuration;
+            if (!videoHas2Pop) {{
+                var blackDuration = headDuration - slateDuration;
+                var blackSolid = masterComp.layers.addSolid([0,0,0], "2s_Black", compW, compH, 1.0, blackDuration);
+                blackSolid.startTime = slateDuration;
+                blackSolid.outPoint = headDuration;
+            }}
 
             var slateLayer = masterComp.layers.add(slateComp);
             slateLayer.startTime = 0;
-            if (usingAepTemplate) {{
+            if (videoHas2Pop) {{
+                slateLayer.outPoint = slateDuration;
+            }} else if (usingAepTemplate) {{
                 slateLayer.outPoint = slateDuration + masterComp.frameDuration;
             }} else {{
                 slateLayer.outPoint = slateDuration;
@@ -5392,11 +5471,28 @@ open "{primary_target}"
                 var cleanW = vidItem.width > 0 ? vidItem.width : compW;
                 var cleanH = vidItem.height > 0 ? vidItem.height : compH;
                 var cleanCompName = job.clean_stem ? (job.clean_stem + "_UNSLATED") : (slateId + "_UNSLATED");
-                var unslatedComp = app.project.items.addComp(cleanCompName, cleanW, cleanH, 1.0, vidItem.duration, compFps);
-                unslatedComp.parentFolder = unslatedFolder;
-                setCompStartTimecode(unslatedComp, "01:00:00:00");
-                var cleanLayer = unslatedComp.layers.add(vidItem);
-                cleanLayer.startTime = 0.0;
+                var cleanComp = null;
+                var cleanLayer = null;
+                if (videoHas2Pop) {{
+                    // Video has a 2-pop leader (starts at 00:59:58:00). Trim the first 2.0s so picture begins at 01:00:00:00.
+                    var twoSecFrames = Math.round(2.0 * nominalFps);
+                    var twoSecDur = twoSecFrames / compFps;
+                    var cleanDuration = Math.max(masterComp.frameDuration, vidItem.duration - twoSecDur);
+                    cleanComp = app.project.items.addComp(cleanCompName, cleanW, cleanH, 1.0, cleanDuration, compFps);
+                    cleanComp.parentFolder = unslatedFolder;
+                    setCompStartTimecode(cleanComp, "01:00:00:00");
+                    cleanLayer = cleanComp.layers.add(vidItem);
+                    cleanLayer.startTime = -twoSecDur;
+                    cleanLayer.inPoint = 0.0;
+                    cleanLayer.outPoint = cleanDuration;
+                }} else {{
+                    // Clean video without leader starts directly at 01:00:00:00.
+                    cleanComp = app.project.items.addComp(cleanCompName, cleanW, cleanH, 1.0, vidItem.duration, compFps);
+                    cleanComp.parentFolder = unslatedFolder;
+                    setCompStartTimecode(cleanComp, "01:00:00:00");
+                    cleanLayer = cleanComp.layers.add(vidItem);
+                    cleanLayer.startTime = 0.0;
+                }}
                 cleanLayer.property("Scale").setValue([100, 100]);
                 queueProResAndH264(
                     unslatedComp,
