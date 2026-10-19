@@ -1574,7 +1574,7 @@ class SuperJoyWorkstation:
         self.unslate_dir = tk.StringVar()
         self.marry_slates_dir = tk.StringVar()
         self.marry_csv_path = tk.StringVar()
-        self.output_mode_var = tk.StringVar(value="slated_masters")  # 'slated_masters' or 'slates_only'
+        self.output_mode_var = tk.StringVar(value="slates_only")  # 'slated_masters' or 'slates_only'
         self.auto_transcode_var = tk.BooleanVar(value=True)  # ProRes 422 HQ (.mov) + H.264 25Mbps (.mp4) + Unslated
         self.fps_var = tk.StringVar(value=DEFAULT_FPS_LABEL)
         self.aspect_var = tk.StringVar(value=DEFAULT_ASPECT)
@@ -1609,6 +1609,7 @@ class SuperJoyWorkstation:
         self.output_mode_var.trace_add("write", lambda *_: self._on_output_mode_changed())
         self.auto_transcode_var.trace_add("write", lambda *_: self.update_asset_badges())
         self.auto_transcode_var.trace_add("write", lambda *_: self._on_output_mode_changed())
+        self._on_output_mode_changed()
         self.update_asset_badges()
         if self.tsv_path.get().strip():
             self.update_file_preview()
@@ -1878,12 +1879,13 @@ class SuperJoyWorkstation:
             radius=8,
         )
         self.output_mode_pills.pack(side="left")
-        RoundedToggle(
+        self.transcode_toggle = RoundedToggle(
             mode_row,
             "Auto-Transcode ProRes 422 HQ + H.264 (25Mbps)",
             self.auto_transcode_var,
             font_spec=(FONT, 10, "bold"),
-        ).pack(side="left", padx=(12, 0))
+        )
+        self.transcode_toggle.pack(side="left", padx=(12, 0))
         # Hint gets its own row so it is never clipped at narrow window widths
         self.output_mode_hint = tk.Label(
             ab,
@@ -2405,6 +2407,11 @@ class SuperJoyWorkstation:
 
     def _on_output_mode_changed(self):
         slates_only = self.output_mode_var.get() == "slates_only"
+        if hasattr(self, "transcode_toggle"):
+            if slates_only:
+                self.transcode_toggle.pack_forget()
+            else:
+                self.transcode_toggle.pack(side="left", padx=(12, 0))
         if hasattr(self, "output_mode_hint"):
             self.output_mode_hint.config(
                 text=".mov only \u2192 single output folder (No Video)"
@@ -2416,7 +2423,7 @@ class SuperJoyWorkstation:
                 ),
                 fg=ACCENT_YELLOW if slates_only else TEXT_MUTED,
             )
-        if str(self.btn_run["state"]) == "normal":
+        if hasattr(self, "btn_run") and str(self.btn_run["state"]) == "normal":
             self.btn_run.config(text=self.run_label())
         self.update_asset_badges()
 
