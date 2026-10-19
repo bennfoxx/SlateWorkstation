@@ -3129,7 +3129,7 @@ class SuperJoyWorkstation:
                 var omPro = rqPro.outputModule(1);
                 applyOutputTemplateSafe(omPro, ["Apple ProRes 422 HQ", "High Quality", "Lossless"]);
                 try {{
-                    omPro.audioOutput = true;
+                    omPro.setSettings({{"Output Audio": "On"}});
                 }} catch (eAudP) {{}}
                 omPro.file = new File(proresPath);
             }}
@@ -3142,7 +3142,7 @@ class SuperJoyWorkstation:
                     "H.264 - Match Render Settings - 15 Mbps"
                 ]);
                 try {{
-                    omMp4.audioOutput = true;
+                    omMp4.setSettings({{"Output Audio": "On"}});
                 }} catch (eAudM) {{}}
                 omMp4.file = new File(h264Path);
             }}
@@ -3186,11 +3186,6 @@ class SuperJoyWorkstation:
 
             var masterComp = app.project.items.addComp(job.comp_name, compW, compH, 1.0, totalDuration, compFps);
             masterComp.parentFolder = masterFolder;
-            try {{
-                if (vidItem.dropFrame !== undefined) {{
-                    masterComp.dropFrame = vidItem.dropFrame;
-                }}
-            }} catch (eDfM) {{}}
             masterComp.displayStartTime = 3593.0; // 00:59:53:00
 
             var blackSolid = masterComp.layers.addSolid([0,0,0], "2s_Black", compW, compH, 1.0, 2.0);
@@ -3230,11 +3225,6 @@ class SuperJoyWorkstation:
                 var cleanCompName = job.unslated_comp_name || (job.comp_name + "_UNSLATED");
                 var cleanComp = app.project.items.addComp(cleanCompName, compW, compH, 1.0, vidItem.duration, compFps);
                 cleanComp.parentFolder = unslatedFolder;
-                try {{
-                    if (vidItem.dropFrame !== undefined) {{
-                        cleanComp.dropFrame = vidItem.dropFrame;
-                    }}
-                }} catch (eDfClean) {{}}
                 cleanComp.displayStartTime = 3600.0; // 01:00:00:00
                 var cleanVidLayer = cleanComp.layers.add(vidItem);
                 cleanVidLayer.startTime = 0.0;
@@ -3516,11 +3506,6 @@ class SuperJoyWorkstation:
 
             var comp = app.project.items.addComp(job.comp_name, compW, compH, 1.0, cleanDuration, compFps);
             comp.parentFolder = rootFolder;
-            try {{
-                if (vidItem.dropFrame !== undefined) {{
-                    comp.dropFrame = vidItem.dropFrame;
-                }}
-            }} catch (eDfUn) {{}}
             comp.displayStartTime = 3600.0; // 01:00:00:00 picture start
 
             var vidLayer = comp.layers.add(vidItem);
@@ -3535,7 +3520,7 @@ class SuperJoyWorkstation:
                 var outMod = rqItem.outputModule(1);
                 applyOutputTemplateSafe(outMod, ["Apple ProRes 422 HQ", "High Quality", "Lossless"]);
                 try {{
-                    outMod.audioOutput = true;
+                    outMod.setSettings({{"Output Audio": "On"}});
                 }} catch (eAudP) {{}}
                 outMod.file = new File(proresTarget);
             }}
@@ -3548,7 +3533,7 @@ class SuperJoyWorkstation:
                     "H.264 - Match Render Settings - 15 Mbps"
                 ]);
                 try {{
-                    outMp4.audioOutput = true;
+                    outMp4.setSettings({{"Output Audio": "On"}});
                 }} catch (eAudM) {{}}
                 outMp4.file = new File(job.h264_output);
             }}
@@ -3882,7 +3867,7 @@ class SuperJoyWorkstation:
                 var omPro = rqPro.outputModule(1);
                 applyOutputTemplateSafe(omPro, ["Apple ProRes 422 HQ", "High Quality", "Lossless"]);
                 try {{
-                    omPro.audioOutput = true;
+                    omPro.setSettings({{"Output Audio": "On"}});
                 }} catch (eAudP) {{}}
                 omPro.file = new File(proresPath);
             }}
@@ -3895,7 +3880,7 @@ class SuperJoyWorkstation:
                     "H.264 - Match Render Settings - 15 Mbps"
                 ]);
                 try {{
-                    omMp4.audioOutput = true;
+                    omMp4.setSettings({{"Output Audio": "On"}});
                 }} catch (eAudM) {{}}
                 omMp4.file = new File(h264Path);
             }}
@@ -4148,13 +4133,6 @@ class SuperJoyWorkstation:
             var masterComp = app.project.items.addComp(compName, compW, compH, 1.0, totalDuration, compFps);
             masterComp.parentFolder = masterFolder;
 
-            // Preserve drop-frame setting from source footage for accurate broadcast timecode display
-            try {{
-                if (vidItem.dropFrame !== undefined) {{
-                    masterComp.dropFrame = vidItem.dropFrame;
-                }}
-            }} catch (eDf) {{}}
-
             masterComp.displayStartTime = 3593.0; // 00:59:53:00
 
             var blackSolid = masterComp.layers.addSolid([0,0,0], "2s_Black", compW, compH, 1.0, 2.0);
@@ -4199,11 +4177,6 @@ class SuperJoyWorkstation:
                 var cleanCompName = job.clean_stem ? (job.clean_stem + "_UNSLATED") : (slateId + "_UNSLATED");
                 var unslatedComp = app.project.items.addComp(cleanCompName, cleanW, cleanH, 1.0, vidItem.duration, compFps);
                 unslatedComp.parentFolder = unslatedFolder;
-                try {{
-                    if (vidItem.dropFrame !== undefined) {{
-                        unslatedComp.dropFrame = vidItem.dropFrame;
-                    }}
-                }} catch (eDfU) {{}}
                 unslatedComp.displayStartTime = 3600.0; // 01:00:00:00 picture start
                 var cleanLayer = unslatedComp.layers.add(vidItem);
                 cleanLayer.startTime = 0.0;
