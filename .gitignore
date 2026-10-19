@@ -2,3 +2,8 @@
 __pycache__/
 *.py[cod]
 *.log
+dist/
+build/
+*.spec
+*.dmg
+__pycache__/

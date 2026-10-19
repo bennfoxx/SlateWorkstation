@@ -159,7 +159,7 @@ def today_yyyy_mm_dd():
 
 
 # Default After Effects Slate Template (.aep) and Spreadsheet (.xlsx) bundled in the workstation folder
-_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+_APP_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))  # bundled resources when frozen
 _TPL_006 = os.path.join(_APP_DIR, "sj_Slates From Spreadsheet_Template_006.aep")
 _TPL_005 = os.path.join(_APP_DIR, "sj_Slates From Spreadsheet_Template_005.aep")
 DEFAULT_TEMPLATE_AEP = _TPL_006 if os.path.exists(_TPL_006) else _TPL_005
@@ -424,7 +424,7 @@ def ensure_ame_presets(presets_dir):
     prores_dst = os.path.join(presets_dir, "SuperJoy_Apple_ProRes_422_HQ_MatchSource.epr")
     h264_dst = os.path.join(presets_dir, "SuperJoy_H264_MatchSource_25Mbps.epr")
 
-    bundled_presets_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "presets")
+    bundled_presets_dir = os.path.join(_APP_DIR, "presets")
     bundled_prores = os.path.join(bundled_presets_dir, "SuperJoy_Apple_ProRes_422_HQ_MatchSource.epr")
     bundled_h264 = os.path.join(bundled_presets_dir, "SuperJoy_H264_MatchSource_25Mbps.epr")
 
