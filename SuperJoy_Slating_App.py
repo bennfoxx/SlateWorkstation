@@ -3756,6 +3756,15 @@ class SuperJoyWorkstation:
             }}
         }}
 
+        function setCompStartTimecode(c, tcString) {{
+            try {{
+                var t = currentFormatToTime(tcString, c.frameRate);
+                c.displayStartTime = t + (c.frameDuration * 0.5);
+            }} catch (eTc) {{
+                c.displayStartTime = (tcString === "00:59:53:00") ? 3593.0 : 3600.0;
+            }}
+        }}
+
         try {{
             if (app.project) {{
                 app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
@@ -3796,7 +3805,7 @@ class SuperJoyWorkstation:
 
             var masterComp = app.project.items.addComp(job.comp_name, compW, compH, 1.0, totalDuration, compFps);
             masterComp.parentFolder = masterFolder;
-            masterComp.displayStartTime = 3593.0; // 00:59:53:00
+            setCompStartTimecode(masterComp, "00:59:53:00");
 
             var blackSolid = masterComp.layers.addSolid([0,0,0], "2s_Black", compW, compH, 1.0, 2.0);
             blackSolid.startTime = 5.0;
@@ -3835,7 +3844,7 @@ class SuperJoyWorkstation:
                 var cleanCompName = job.unslated_comp_name || (job.comp_name + "_UNSLATED");
                 var cleanComp = app.project.items.addComp(cleanCompName, compW, compH, 1.0, vidItem.duration, compFps);
                 cleanComp.parentFolder = unslatedFolder;
-                cleanComp.displayStartTime = 3600.0; // 01:00:00:00
+                setCompStartTimecode(cleanComp, "01:00:00:00");
                 var cleanVidLayer = cleanComp.layers.add(vidItem);
                 cleanVidLayer.startTime = 0.0;
                 cleanVidLayer.property("Scale").setValue([100, 100]);
@@ -4113,6 +4122,15 @@ class SuperJoyWorkstation:
             return false;
         }}
 
+        function setCompStartTimecode(c, tcString) {{
+            try {{
+                var t = currentFormatToTime(tcString, c.frameRate);
+                c.displayStartTime = t + (c.frameDuration * 0.5);
+            }} catch (eTc) {{
+                c.displayStartTime = 3600.0;
+            }}
+        }}
+
         try {{
             if (app.project) {{
                 app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
@@ -4153,7 +4171,7 @@ class SuperJoyWorkstation:
 
             var comp = app.project.items.addComp(job.comp_name, compW, compH, 1.0, cleanDuration, compFps);
             comp.parentFolder = rootFolder;
-            comp.displayStartTime = 3600.0; // 01:00:00:00 picture start
+            setCompStartTimecode(comp, "01:00:00:00");
 
             var vidLayer = comp.layers.add(vidItem);
             vidLayer.startTime = -trimSeconds;
@@ -4802,6 +4820,15 @@ open "{primary_target}"
             }}
         }}
 
+        function setCompStartTimecode(c, tcString) {{
+            try {{
+                var t = currentFormatToTime(tcString, c.frameRate);
+                c.displayStartTime = t + (c.frameDuration * 0.5);
+            }} catch (eTc) {{
+                c.displayStartTime = (tcString === "00:59:53:00") ? 3593.0 : 3600.0;
+            }}
+        }}
+
         // Flatten any accidental CR/LF/tabs to a single line so slate text never wraps onto a second row.
         function cleanLine(val) {{
             if (val === undefined || val === null) return "";
@@ -5101,8 +5128,7 @@ open "{primary_target}"
             var compName = job.aspect ? (slateId + "_" + job.aspect + "_SLATED") : (slateId + "_SLATED");
             var masterComp = app.project.items.addComp(compName, compW, compH, 1.0, totalDuration, compFps);
             masterComp.parentFolder = masterFolder;
-
-            masterComp.displayStartTime = 3593.0; // 00:59:53:00
+            setCompStartTimecode(masterComp, "00:59:53:00");
 
             var blackSolid = masterComp.layers.addSolid([0,0,0], "2s_Black", compW, compH, 1.0, 2.0);
             blackSolid.startTime = 5.0;
@@ -5146,7 +5172,7 @@ open "{primary_target}"
                 var cleanCompName = job.clean_stem ? (job.clean_stem + "_UNSLATED") : (slateId + "_UNSLATED");
                 var unslatedComp = app.project.items.addComp(cleanCompName, cleanW, cleanH, 1.0, vidItem.duration, compFps);
                 unslatedComp.parentFolder = unslatedFolder;
-                unslatedComp.displayStartTime = 3600.0; // 01:00:00:00 picture start
+                setCompStartTimecode(unslatedComp, "01:00:00:00");
                 var cleanLayer = unslatedComp.layers.add(vidItem);
                 cleanLayer.startTime = 0.0;
                 cleanLayer.property("Scale").setValue([100, 100]);
