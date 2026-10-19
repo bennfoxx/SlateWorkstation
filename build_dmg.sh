@@ -8,7 +8,7 @@ APP="SuperJoy Slating Workstation"
 rm -rf build dist "dist_dmg"
 
 python3 -m PyInstaller --noconfirm --windowed --name "$APP" \
-  --osx-bundle-identifier com.superjoy.slatingworkstation \
+  --icon assets/SJ.icns --target-architecture arm64 --osx-bundle-identifier com.superjoy.slatingworkstation \
   --add-data "presets:presets" \
   --add-data "sj_Slates From Spreadsheet_Template_006.aep:." \
   --add-data "sj_Slates From Spreadsheet_Template_005.aep:." \
@@ -23,6 +23,13 @@ codesign --force --deep --sign - "dist/$APP.app"
 # DMG staging: app + Applications shortcut + readme
 mkdir dist_dmg
 cp -R "dist/$APP.app" dist_dmg/
+cat > dist_dmg/FIRST_LAUNCH.txt <<'TXT'
+1. Drag the app into Applications.
+2. If macOS says it can't be verified, run this once in Terminal:
+   xattr -dr com.apple.quarantine "/Applications/SuperJoy Slating Workstation.app"
+   (or right-click the app > Open > Open)
+3. Allow it to control After Effects when prompted.
+TXT
 cp readme.txt dist_dmg/README.txt 2>/dev/null || true
 ln -s /Applications dist_dmg/Applications
 hdiutil create -volname "$APP $VERSION" -srcfolder dist_dmg -ov -format UDZO "SuperJoy_Slating_Workstation_v$VERSION.dmg"
