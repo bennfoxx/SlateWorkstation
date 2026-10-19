@@ -415,6 +415,29 @@ def create_delivery_folders(base_out_dir, include_slated=True, include_unslated=
     return paths
 
 
+def ensure_ame_running(wait_seconds=75):
+    """Launch Adobe Media Encoder (if needed) and give Dynamic Link time to come up,
+    so After Effects' queueInAME doesn't fail with 'Failed to connect to Adobe Media Encoder'."""
+    def running():
+        r = subprocess.run(["pgrep", "-f", "Adobe Media Encoder.*[.]app/Contents/MacOS/"], capture_output=True)
+        return r.returncode == 0
+    try:
+        if running():
+            return True
+        apps = sorted(glob.glob("/Applications/Adobe Media Encoder */Adobe Media Encoder *.app"), reverse=True)
+        if not apps:
+            return False
+        subprocess.run(["open", "-g", apps[0]], check=False)
+        for _ in range(wait_seconds):
+            if running():
+                time.sleep(15)  # let the Dynamic Link server finish starting
+                return True
+            time.sleep(1)
+    except Exception:
+        pass
+    return False
+
+
 def create_flat_slate_folder(out_dir):
     """Standalone slates: a single flat output folder (.mov only, no ProRes/h264 subfolders)."""
     os.makedirs(out_dir, exist_ok=True)
@@ -3089,6 +3112,7 @@ class SuperJoyWorkstation:
 
         self.write_marry_jsx(jsx_path, marry_jobs, aep_marry_path, beep_path, settings)
 
+        ensure_ame_running()
         ae_target = resolve_ae_applescript_target()
         applescript = f'''
         on run argv
@@ -3268,7 +3292,19 @@ class SuperJoyWorkstation:
 
         var aepFile = new File({json.dumps(aep_path)});
         app.project.save(aepFile);
-        app.project.renderQueue.queueInAME(false);
+        var queued = false, lastErr = "";
+        for (var qa = 0; qa < 4 && !queued; qa++) {{
+            try {{
+                app.project.renderQueue.queueInAME(false);
+                queued = true;
+            }} catch (eQ) {{
+                lastErr = String(eQ);
+                $.sleep(5000);
+            }}
+        }}
+        if (!queued) {{
+            alert("Could not reach Adobe Media Encoder (" + lastErr + ").\\n\\nThe project is saved with the render queue intact. Make sure Media Encoder is open and not frozen (quit and relaunch it if needed), then in After Effects click 'Queue in AME' in the Render Queue panel.");
+        }}
         app.endUndoGroup();
         """
         with open(path, "w", encoding="utf-8") as f:
@@ -3435,6 +3471,7 @@ class SuperJoyWorkstation:
 
         self.write_unslate_jsx(jsx_path, unslate_jobs, aep_unslate_path, settings)
 
+        ensure_ame_running()
         ae_target = resolve_ae_applescript_target()
         applescript = f'''
         on run argv
@@ -3578,7 +3615,19 @@ class SuperJoyWorkstation:
 
         var aepFile = new File({json.dumps(aep_path)});
         app.project.save(aepFile);
-        app.project.renderQueue.queueInAME(false);
+        var queued = false, lastErr = "";
+        for (var qa = 0; qa < 4 && !queued; qa++) {{
+            try {{
+                app.project.renderQueue.queueInAME(false);
+                queued = true;
+            }} catch (eQ) {{
+                lastErr = String(eQ);
+                $.sleep(5000);
+            }}
+        }}
+        if (!queued) {{
+            alert("Could not reach Adobe Media Encoder (" + lastErr + ").\\n\\nThe project is saved with the render queue intact. Make sure Media Encoder is open and not frozen (quit and relaunch it if needed), then in After Effects click 'Queue in AME' in the Render Queue panel.");
+        }}
         app.endUndoGroup();
         """
         with open(path, "w", encoding="utf-8") as f:
@@ -3809,6 +3858,7 @@ class SuperJoyWorkstation:
         jsx_path = os.path.join(output_dir, "_temp_ae_build.jsx")
         self.write_jsx(jsx_path, ae_jobs, aep_master_path, beep_path, render_cfg, templates)
 
+        ensure_ame_running()
         ae_target = resolve_ae_applescript_target()
         applescript = f'''
         on run argv
@@ -3861,6 +3911,18 @@ class SuperJoyWorkstation:
         reset_tk_mouse_state(self.root)
 
     def write_jsx(self, path, jobs, aep_path, beep_path, settings, templates):
+        # Work from a private copy of the .aep so the original template is never opened/locked in AE
+        templates = dict(templates or {})
+        src_aep = templates.get("_aep")
+        if src_aep and os.path.isfile(src_aep):
+            import tempfile
+            work_dir = tempfile.mkdtemp(prefix="sj_tpl_")
+            work_aep = os.path.join(work_dir, os.path.basename(src_aep))
+            shutil.copyfile(src_aep, work_aep)
+            os.chmod(work_aep, 0o644)
+            for k, v in list(templates.items()):
+                if v == src_aep:
+                    templates[k] = work_aep
         jobs_json = json.dumps(jobs)
         settings_json = json.dumps(settings)
         templates_json = json.dumps(templates)
@@ -4229,7 +4291,19 @@ class SuperJoyWorkstation:
         if (skipped.length) {{ alert("Skipped (no matching slate template):\\n" + skipped.join("\\n")); }}
         var aepFile = new File({json.dumps(aep_path)});
         app.project.save(aepFile);
-        app.project.renderQueue.queueInAME(false);
+        var queued = false, lastErr = "";
+        for (var qa = 0; qa < 4 && !queued; qa++) {{
+            try {{
+                app.project.renderQueue.queueInAME(false);
+                queued = true;
+            }} catch (eQ) {{
+                lastErr = String(eQ);
+                $.sleep(5000);
+            }}
+        }}
+        if (!queued) {{
+            alert("Could not reach Adobe Media Encoder (" + lastErr + ").\\n\\nThe project is saved with the render queue intact. Make sure Media Encoder is open and not frozen (quit and relaunch it if needed), then in After Effects click 'Queue in AME' in the Render Queue panel.");
+        }}
         app.endUndoGroup();
         """
         with open(path, "w", encoding="utf-8") as f:
