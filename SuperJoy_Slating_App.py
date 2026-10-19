@@ -1559,16 +1559,9 @@ class SlatePreviewViewer(tk.Toplevel):
         self.title_lbl.pack(fill="x", pady=(4, 0))
         bind_auto_wrap(self.title_lbl, hb)
 
-        # Image Display Area
-        img_wrap = tk.Frame(self, bg=BG_DARKER, highlightthickness=1, highlightbackground=BORDER_SUBTLE)
-        img_wrap.pack(fill="both", expand=True, padx=18, pady=6)
-        self.img_label = tk.Label(img_wrap, bg=BG_DARKER)
-        self.img_label.pack(fill="both", expand=True, padx=10, pady=10)
-        self.img_label.bind("<Configure>", self._on_resize_viewport)
-
-        # Footer Navigation Bar
+        # Footer Navigation Bar - MUST be packed on bottom FIRST so it is permanently pinned on screen
         nav = tk.Frame(self, bg=BG_DARK)
-        nav.pack(fill="x", padx=18, pady=(8, 14))
+        nav.pack(side="bottom", fill="x", padx=18, pady=(8, 14))
 
         self.btn_prev = RoundedButton(
             nav, text="◀ Previous", command=self.prev_slate, color=BG_GREY, padx=20, pady=8, radius=10
@@ -1589,6 +1582,13 @@ class SlatePreviewViewer(tk.Toplevel):
             nav, text="Close", command=self.destroy, color=BG_DARKER, padx=18, pady=8, radius=10
         )
         self.btn_close.pack(side="right", padx=(0, 10))
+
+        # Image Display Area - packed after nav to fill remaining space
+        img_wrap = tk.Frame(self, bg=BG_DARKER, highlightthickness=1, highlightbackground=BORDER_SUBTLE)
+        img_wrap.pack(side="top", fill="both", expand=True, padx=18, pady=6)
+        self.img_label = tk.Label(img_wrap, bg=BG_DARKER)
+        self.img_label.pack(fill="both", expand=True, padx=10, pady=10)
+        self.img_label.bind("<Configure>", self._on_resize_viewport)
 
     def _bind_keys(self):
         self.bind("<Left>", lambda _e: self.prev_slate())
@@ -1658,8 +1658,8 @@ class SlatePreviewViewer(tk.Toplevel):
             return None
 
         # Determine target bounding box based on current window/viewport size
-        vw = max(480, self.img_label.winfo_width() - 20) if self.img_label.winfo_width() > 100 else 760
-        vh = max(320, self.img_label.winfo_height() - 20) if self.img_label.winfo_height() > 100 else 460
+        vw = max(360, self.img_label.winfo_width() - 20) if self.img_label.winfo_width() > 100 else 760
+        vh = max(240, self.img_label.winfo_height() - 20) if self.img_label.winfo_height() > 100 else 460
 
         cache_key = (src_path, vw // 20, vh // 20)  # bucket to avoid rescales on 1px jitter
         if cache_key in self._thumb_cache and os.path.isfile(self._thumb_cache[cache_key]):
@@ -1668,14 +1668,30 @@ class SlatePreviewViewer(tk.Toplevel):
             except Exception:
                 pass
 
-        # Use macOS built-in /usr/bin/sips to downscale cleanly without any external packages
+        # Use macOS built-in /usr/bin/sips to probe source dimensions and downscale cleanly
         import tempfile
         out_thumb = tempfile.mktemp(prefix="sj_prev_", suffix=".png")
         try:
-            # -Z <maxDimension> scales image down preserving aspect ratio
-            max_dim = max(vw, vh)
+            # Query source width & height using sips
+            dim_res = subprocess.run(
+                ["/usr/bin/sips", "-g", "pixelWidth", "-g", "pixelHeight", src_path],
+                capture_output=True,
+                text=True,
+            )
+            src_w, src_h = 1920, 1080
+            for line in dim_res.stdout.splitlines():
+                if "pixelWidth:" in line:
+                    src_w = int(line.split(":")[-1].strip())
+                elif "pixelHeight:" in line:
+                    src_h = int(line.split(":")[-1].strip())
+
+            # Scale to fit strictly inside (vw, vh) bounding box
+            scale = min(vw / max(1, src_w), vh / max(1, src_h))
+            target_w = max(1, int(src_w * scale))
+            target_h = max(1, int(src_h * scale))
+
             subprocess.run(
-                ["/usr/bin/sips", "-Z", str(max_dim), src_path, "--out", out_thumb],
+                ["/usr/bin/sips", "-z", str(target_h), str(target_w), src_path, "--out", out_thumb],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -4441,10 +4457,25 @@ class SuperJoyWorkstation:
             execute_ae_script_file(jsx_path)
             status_info = verify_jsx_status(jsx_path)
 
-            # Store preview metadata for in-app preview viewer
+            # Generate static first-frame preview PNGs for in-app preview viewer using macOS native Quick Look
             created_previews = []
             for j in ae_jobs:
                 ppath = j.get("preview_png")
+                mov_file = j.get("slated_prores_output") or j.get("final_output")
+                if ppath and mov_file and os.path.isfile(mov_file) and not os.path.isfile(ppath):
+                    try:
+                        # Extract first frame thumbnail via macOS built-in /usr/bin/qlmanage
+                        subprocess.run(
+                            ["/usr/bin/qlmanage", "-t", "-s", "1080", "-o", previews_dir, mov_file],
+                            capture_output=True,
+                            timeout=30,
+                        )
+                        ql_out = os.path.join(previews_dir, os.path.basename(mov_file) + ".png")
+                        if os.path.isfile(ql_out):
+                            os.replace(ql_out, ppath)
+                    except Exception:
+                        pass
+
                 if ppath and os.path.isfile(ppath):
                     created_previews.append({
                         "id": j.get("text_data", {}).get("id") or j.get("text_data", {}).get("ad-id", ""),
@@ -4957,6 +4988,15 @@ open "{primary_target}"
             app.newProject();
         }}
 
+        // Purge any stale or existing RenderQueue items from the template or previous session
+        while (app.project.renderQueue.numItems > 0) {{
+            try {{
+                app.project.renderQueue.item(1).remove();
+            }} catch (eRqClean) {{
+                break;
+            }}
+        }}
+
         app.beginUndoGroup("Batch Slate Generation");
 
         var skipped = [];
@@ -5019,13 +5059,6 @@ open "{primary_target}"
 
             if (slateComp) {{
                 populateSlateComp(slateComp, job, solidComps);
-                if (job.preview_png) {{
-                    try {{
-                        var prevF = new File(job.preview_png);
-                        slateComp.saveFrameToPng(0, prevF);
-                        $.sleep(300);
-                    }} catch (eSnap) {{}}
-                }}
             }}
 
             // Standalone Slate Only mode: queue the populated slateComp to ProRes (.mov)
