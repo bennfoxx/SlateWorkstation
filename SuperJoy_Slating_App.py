@@ -1546,6 +1546,7 @@ class SuperJoyWorkstation:
         self.f_audio = tk.StringVar(value="STEREO")
         self.f_copyright = tk.StringVar()
         self.f_flame = tk.BooleanVar(value=False)
+        self.f_nfa = tk.BooleanVar(value=False)
 
         self.create_widgets()
 
@@ -1575,6 +1576,7 @@ class SuperJoyWorkstation:
         ):
             shared_var.trace_add("write", lambda *_: self._sync_shared_fields_to_batch(sync_flame=False))
         self.f_flame.trace_add("write", lambda *_: self._sync_shared_fields_to_batch(sync_flame=True))
+        self.f_nfa.trace_add("write", lambda *_: self._sync_shared_fields_to_batch(sync_nfa=True))
 
         # Apply the macOS Tk 8.6.12 TKWindow.mouseInResizeArea tap fix immediately and on map
         patch_macos_tk_tap_bug(self.root)
@@ -2038,7 +2040,10 @@ class SuperJoyWorkstation:
         RoundedEntry(spot_frame, self.f_trt, 6).grid(row=0, column=5, sticky="ew", padx=(0, 10), pady=2)
 
         RoundedToggle(spot_frame, "Flame Logo", self.f_flame, font_spec=(FONT, 11, "bold")).grid(
-            row=0, column=6, sticky="e", padx=(2, 0), pady=2
+            row=0, column=6, sticky="e", padx=(2, 6), pady=2
+        )
+        RoundedToggle(spot_frame, "NFA (Not For Air)", self.f_nfa, font_spec=(FONT, 11, "bold")).grid(
+            row=0, column=7, sticky="e", padx=(2, 0), pady=2
         )
 
         # Multi-Resolution Selector & Retroactive Resolution Override Row
@@ -2130,25 +2135,27 @@ class SuperJoyWorkstation:
         )
         self.batch_count_lbl.pack(side="right", padx=4)
 
-        # Queue Table (tapping COMP/RES cycles resolution; tapping FLAME toggles y/n; tapping OUTPUT FOLDER sets per-slate output dir)
+        # Queue Table (tapping COMP/RES cycles resolution; tapping FLAME toggles y/n; tapping NFA toggles NFA; tapping OUTPUT FOLDER sets per-slate output dir)
         tree_wrap = tk.Frame(p, bg=BORDER_SUBTLE, bd=0, highlightthickness=0)
         tree_wrap.pack(fill="both", expand=True, pady=(2, 0))
-        columns = ("id", "title", "res", "trt", "flame", "client", "output")
+        columns = ("id", "title", "res", "trt", "flame", "nfa", "client", "output")
         self.tree = ttk.Treeview(tree_wrap, columns=columns, show="headings", height=4)
         self.tree.heading("id", text="AD-ID")
         self.tree.heading("title", text="TITLE")
         self.tree.heading("res", text="COMP / RES (TAP)")
         self.tree.heading("trt", text="TRT")
         self.tree.heading("flame", text="FLAME")
+        self.tree.heading("nfa", text="NFA (TAP)")
         self.tree.heading("client", text="CLIENT")
         self.tree.heading("output", text="OUTPUT FOLDER (TAP)")
-        self.tree.column("id", width=105, minwidth=80, anchor="w")
-        self.tree.column("title", width=200, minwidth=130, anchor="w", stretch=True)
-        self.tree.column("res", width=145, minwidth=120, anchor="center")
-        self.tree.column("trt", width=55, minwidth=45, anchor="center")
-        self.tree.column("flame", width=55, minwidth=45, anchor="center")
-        self.tree.column("client", width=95, minwidth=75, anchor="w")
-        self.tree.column("output", width=165, minwidth=120, anchor="w")
+        self.tree.column("id", width=100, minwidth=75, anchor="w")
+        self.tree.column("title", width=190, minwidth=120, anchor="w", stretch=True)
+        self.tree.column("res", width=135, minwidth=110, anchor="center")
+        self.tree.column("trt", width=50, minwidth=40, anchor="center")
+        self.tree.column("flame", width=50, minwidth=40, anchor="center")
+        self.tree.column("nfa", width=65, minwidth=50, anchor="center")
+        self.tree.column("client", width=85, minwidth=70, anchor="w")
+        self.tree.column("output", width=155, minwidth=110, anchor="w")
         self.tree.pack(fill="both", expand=True, padx=1, pady=1)
         self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
         self.tree.bind("<ButtonPress-1>", self._on_tree_tap, add="+")
@@ -2439,7 +2446,7 @@ class SuperJoyWorkstation:
         if tab == 3:
             return "MARRY SLATES + VIDEOS & QUEUE IN AME"
         if self.output_mode_var.get() == "slates_only":
-            return "BUILD STANDALONE SLATES & QUEUE IN AME"
+            return "BUILD & RENDER STANDALONE SLATES (AE)"
         return "GENERATE .AEP & QUEUE IN AME"
 
     # ------------------------------------------------------------------
@@ -2461,6 +2468,7 @@ class SuperJoyWorkstation:
             "audio": sanitize_single_line(self.f_audio.get()) or "STEREO",
             "copyright": sanitize_single_line(self.f_copyright.get()),
             "flame": "y" if self.f_flame.get() else "n",
+            "nfa": "NFA" if self.f_nfa.get() else "",
         }
 
     @staticmethod
@@ -2476,6 +2484,12 @@ class SuperJoyWorkstation:
             flame_val = "n"
         else:
             flame_val = shared["flame"]
+
+        prev_nfa = str(prev.get("nfa", "")).strip()
+        if prev_nfa:
+            nfa_val = prev_nfa
+        else:
+            nfa_val = shared.get("nfa", "")
         return {
             "agency": shared["agency"] or prev.get("agency", "") or DEFAULT_AGENCY,
             "client": shared["client"] or prev.get("client", ""),
@@ -2494,7 +2508,7 @@ class SuperJoyWorkstation:
             "audio": shared["audio"] or prev.get("audio", "STEREO"),
             "copyright": shared["copyright"] or prev.get("copyright", ""),
             "flame": flame_val,
-            "nfa": prev.get("nfa", ""),
+            "nfa": nfa_val,
             "output_dir": prev.get("output_dir", ""),
         }
 
@@ -2601,8 +2615,8 @@ class SuperJoyWorkstation:
 
         return len(new_batch)
 
-    def _sync_shared_fields_to_batch(self, sync_flame=False):
-        """Keep Agency, Client, Workspace, Copyright, Date, Audio, and (when toggled) Flame synced
+    def _sync_shared_fields_to_batch(self, sync_flame=False, sync_nfa=False):
+        """Keep Agency, Client, Workspace, Copyright, Date, Audio, and (when toggled) Flame/NFA synced
         across all queued batch items as the user types them in."""
         if self._loading_row or not self.manual_batch_data:
             return
@@ -2624,6 +2638,8 @@ class SuperJoyWorkstation:
                 item["copyright"] = shared["copyright"]
             if sync_flame:
                 item["flame"] = shared["flame"]
+            if sync_nfa:
+                item["nfa"] = shared["nfa"]
         self._refresh_tree(preserve_selection=True)
 
     def _refresh_tree(self, preserve_selection=False):
@@ -2638,6 +2654,8 @@ class SuperJoyWorkstation:
             slate["comp"] = asp
             slate["resolution"] = res_lbl
             flame_disp = "YES" if str(slate.get("flame", "n")).lower() in ("y", "yes", "true", "1") else "NO"
+            nfa_val = str(slate.get("nfa", "")).strip()
+            nfa_disp = "NFA" if (nfa_val and nfa_val.lower() not in ("0", "false", "no", "n")) else "AIR"
             out_disp = self._format_output_cell(slate)
             cid = self.tree.insert(
                 "",
@@ -2648,6 +2666,7 @@ class SuperJoyWorkstation:
                     res_lbl,
                     slate["trt"],
                     flame_disp,
+                    nfa_disp,
                     slate["client"],
                     out_disp,
                 ),
@@ -2683,8 +2702,14 @@ class SuperJoyWorkstation:
                 cur_fl = str(self.manual_batch_data[idx].get("flame", "n")).lower() in ("y", "yes", "true", "1")
                 self.manual_batch_data[idx]["flame"] = "n" if cur_fl else "y"
                 self._refresh_tree(preserve_selection=True)
-            # Single-tap on OUTPUT FOLDER column (#7) opens folder picker for that individual slate
-            elif col_id == "#7":
+            # Single-tap on NFA column (#6) toggles NFA / AIR for that individual slate
+            elif col_id == "#6":
+                cur_nfa = str(self.manual_batch_data[idx].get("nfa", "")).strip()
+                is_nfa = bool(cur_nfa and cur_nfa.lower() not in ("0", "false", "no", "n"))
+                self.manual_batch_data[idx]["nfa"] = "" if is_nfa else "NFA"
+                self._refresh_tree(preserve_selection=True)
+            # Single-tap on OUTPUT FOLDER column (#8) opens folder picker for that individual slate
+            elif col_id == "#8":
                 self.set_output_folder_for_selection([idx])
         self._on_tree_select()
 
@@ -2701,6 +2726,8 @@ class SuperJoyWorkstation:
                 self.f_title.set(row.get("title", ""))
                 self.f_trt.set(row.get("trt", ""))
                 self.f_flame.set(str(row.get("flame", "n")).lower() in ("y", "yes", "true", "1"))
+                nfa_v = str(row.get("nfa", "")).strip()
+                self.f_nfa.set(bool(nfa_v and nfa_v.lower() not in ("0", "false", "no", "n")))
                 sel_aspects = [
                     self.manual_batch_data[self.tree.index(s)].get("aspect", DEFAULT_ASPECT)
                     for s in selected
@@ -2804,6 +2831,7 @@ class SuperJoyWorkstation:
                         shared, raw_id, raw_title, raw_trt, target_aspects[0], existing
                     )
                     updated_entry["flame"] = "y" if self.f_flame.get() else "n"
+                    updated_entry["nfa"] = "NFA" if self.f_nfa.get() else ""
                     self.manual_batch_data[sel_idx] = updated_entry
                     self._refresh_tree(preserve_selection=True)
                     return
@@ -2811,6 +2839,7 @@ class SuperJoyWorkstation:
         for asp in target_aspects:
             entry = self._make_slate_entry(shared, raw_id, raw_title, raw_trt, asp)
             entry["flame"] = "y" if self.f_flame.get() else "n"
+            entry["nfa"] = "NFA" if self.f_nfa.get() else ""
             updated = False
             for i, existing in enumerate(self.manual_batch_data):
                 if (
@@ -2913,6 +2942,9 @@ class SuperJoyWorkstation:
                 self.f_audio.set(first_row["audio"])
             if first_row.get("flame"):
                 self.f_flame.set(first_row["flame"].lower() in ("y", "yes", "true", "1"))
+            if first_row.get("nfa"):
+                n_val = str(first_row["nfa"]).strip()
+                self.f_nfa.set(bool(n_val and n_val.lower() not in ("0", "false", "no", "n")))
         finally:
             self._loading_row = False
 
