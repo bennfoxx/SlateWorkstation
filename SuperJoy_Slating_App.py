@@ -71,6 +71,7 @@ FPS_PRESETS = {
     "60": 60.0,
 }
 DEFAULT_ASPECT = "16x9"
+ASPECT_KEYS = ("16x9", "1x1", "4x5", "9x16")
 ASPECT_RESOLUTIONS = {
     "16x9": (1920, 1080),
     "1x1": (1080, 1080),
@@ -78,6 +79,37 @@ ASPECT_RESOLUTIONS = {
     "9x16": (1080, 1920),
 }
 STANDARD_TRTS = ("60", "30", "15", "06")
+
+
+def format_resolution_label(aspect_key):
+    """Return a human-readable resolution string such as '16x9 (1920×1080)'."""
+    key = aspect_key if aspect_key in ASPECT_RESOLUTIONS else DEFAULT_ASPECT
+    w, h = ASPECT_RESOLUTIONS[key]
+    return f"{key} ({w}×{h})"
+
+
+def detect_aspect_from_text(text):
+    """Detect an explicit aspect token ('16x9', '1x1', '4x5', '9x16') or pixel dimensions in a filename/title."""
+    if not text:
+        return None
+    m = re.search(r"(?<![0-9])(16\s*[x_:\-]\s*9|1\s*[x_:\-]\s*1|4\s*[x_:\-]\s*5|9\s*[x_:\-]\s*16)(?![0-9])", text, re.IGNORECASE)
+    if m:
+        parts = re.split(r"[x_:\-\s]+", m.group(1).lower())
+        candidate = f"{parts[0]}x{parts[1]}"
+        if candidate in ASPECT_RESOLUTIONS:
+            return candidate
+    dim_map = {
+        "1920x1080": "16x9",
+        "3840x2160": "16x9",
+        "1080x1080": "1x1",
+        "1080x1350": "4x5",
+        "1080x1920": "9x16",
+        "2160x3840": "9x16",
+    }
+    for dim_tok, asp in dim_map.items():
+        if dim_tok in text.lower():
+            return asp
+    return None
 
 
 def today_yyyy_mm_dd():
@@ -659,6 +691,133 @@ class SegmentedPills(tk.Canvas):
                 self.after_idle(lambda v=val: self._cmd(v))
 
 
+class MultiSelectPills(tk.Canvas):
+    """Single-tap multi-select resolution pill bar for Batch Slate Builder.
+    Allows selecting one or multiple resolutions (16x9, 1x1, 4x5, 9x16, or ALL 4)
+    and updates canvas items in place without deleting items on hover/tap."""
+
+    def __init__(self, parent, options, initial=None, command=None, font_spec=None,
+                 pad_x=11, pad_y=5, radius=9, bg_well=BG_DARKER, active_color=ACCENT_RED):
+        self._choices = [opt if isinstance(opt, tuple) else (opt, str(opt)) for opt in options]
+        self._all_keys = [k for k, _ in self._choices if k != "ALL"]
+        self._selected = set(initial if initial else [self._all_keys[0]])
+        self._cmd = command
+        self._font = tkfont.Font(font=font_spec or (FONT, 11, "bold"))
+        self._pad_x = pad_x
+        self._pad_y = pad_y
+        self._radius = radius
+        self._bg_well = bg_well
+        self._active_color = active_color
+        self._hover_idx = None
+        self._last_fire = 0.0
+        self._rects = []
+        self._pill_ids = []
+
+        item_widths = [self._font.measure(f"✓ {lbl}") + 2 * pad_x for _, lbl in self._choices]
+        total_w = sum(item_widths) + 8 + max(0, len(self._choices) - 1) * 4
+        total_h = self._font.metrics("linespace") + 2 * pad_y + 8
+        parent_bg = parent.cget("bg") if "bg" in parent.keys() else BG_CARD
+        super().__init__(parent, bg=parent_bg, highlightthickness=0, bd=0, width=total_w, height=total_h, takefocus=0)
+
+        self._item_widths = item_widths
+        self._total_w = total_w
+        self._total_h = total_h
+        self._build_items()
+        self._recolor()
+
+        self.bind("<ButtonPress-1>", self._on_click)
+        self.bind("<Double-Button-1>", self._on_click)
+        self.bind("<Motion>", self._on_motion)
+        self.bind("<Leave>", self._on_leave)
+
+    def _build_items(self):
+        self._well_id = round_rect(
+            self, 0, 0, self._total_w, self._total_h, self._radius + 2, fill=self._bg_well, outline=BORDER_SUBTLE
+        )
+        x = 4
+        for (val, lbl), iw in zip(self._choices, self._item_widths):
+            x1, y1, x2, y2 = x, 4, x + iw, self._total_h - 4
+            self._rects.append((x1, y1, x2, y2, val, lbl))
+            bg_id = round_rect(self, x1, y1, x2, y2, self._radius, fill=self._bg_well, outline=self._bg_well)
+            txt_id = self.create_text((x1 + x2) / 2, (y1 + y2) / 2, text=lbl, font=self._font, fill=TEXT_MUTED)
+            self._pill_ids.append((bg_id, txt_id, val, lbl))
+            x = x2 + 4
+
+    def get_selected(self):
+        """Return selected resolution keys in canonical ASPECT_KEYS order."""
+        ordered = [k for k in self._all_keys if k in self._selected]
+        return ordered if ordered else [self._all_keys[0]]
+
+    def set_selected(self, keys):
+        valid = [k for k in keys if k in self._all_keys]
+        self._selected = set(valid if valid else [self._all_keys[0]])
+        self._recolor()
+
+    def _recolor(self):
+        all_on = len(self._selected) == len(self._all_keys)
+        for idx, (bg_id, txt_id, val, lbl) in enumerate(self._pill_ids):
+            is_on = all_on if val == "ALL" else (val in self._selected)
+            if is_on:
+                fill = BG_BLUE if val == "ALL" else self._active_color
+                fg = TEXT_LIGHT
+                disp_txt = f"✓ {lbl}"
+            elif idx == self._hover_idx:
+                fill = BG_GREY
+                fg = TEXT_LIGHT
+                disp_txt = lbl
+            else:
+                fill = self._bg_well
+                fg = ACCENT_YELLOW if val == "ALL" else TEXT_MUTED
+                disp_txt = lbl
+            self.itemconfigure(bg_id, fill=fill, outline=fill)
+            self.itemconfigure(txt_id, fill=fg, text=disp_txt)
+
+    def _hit_index(self, x, y):
+        if not (0 <= y <= self._total_h):
+            return None
+        for idx, (x1, _y1, x2, _y2, _val, _lbl) in enumerate(self._rects):
+            if x1 - 3 <= x <= x2 + 3:
+                return idx
+        return None
+
+    def _on_motion(self, e):
+        idx = self._hit_index(e.x, e.y)
+        if idx != self._hover_idx:
+            self._hover_idx = idx
+            self._recolor()
+
+    def _on_leave(self, _e):
+        if self._hover_idx is not None:
+            self._hover_idx = None
+            self._recolor()
+
+    def _on_click(self, e):
+        idx = self._hit_index(e.x, e.y)
+        if idx is None:
+            return "break"
+        now = time.monotonic()
+        if now - self._last_fire < 0.14:
+            return "break"
+        self._last_fire = now
+        val = self._rects[idx][4]
+        if val == "ALL":
+            if len(self._selected) == len(self._all_keys):
+                self._selected = {self._all_keys[0]}
+            else:
+                self._selected = set(self._all_keys)
+        else:
+            if val in self._selected:
+                if len(self._selected) > 1:
+                    self._selected.remove(val)
+            else:
+                self._selected.add(val)
+        self._recolor()
+        if self._cmd:
+            sel = self.get_selected()
+            self.after_idle(lambda s=sel, v=val: self._cmd(s, v))
+        return "break"
+
+
 class RoundedToggle(tk.Canvas):
     """Single-tap pill toggle switch for boolean options (updates items in place)."""
 
@@ -1149,14 +1308,14 @@ class SuperJoyWorkstation:
         sec2_hdr.pack(fill="x", pady=(4, 2))
         tk.Label(
             sec2_hdr,
-            text="SPOT FILENAME PARSER (AUTO-PULLED FROM MASTER VIDEOS: AD-ID  •  TITLE_WITH_UNDERSCORES  •  TRT 60/30/15/06)",
+            text="SPOT FILENAME PARSER (AUTO-PULLED: AD-ID  •  TITLE_WITH_UNDERSCORES  •  TRT 60/30/15/06  •  MULTI-RES)",
             font=(FONT, 10, "bold"),
             bg=BG_CARD,
             fg=ACCENT_YELLOW,
         ).pack(side="left")
 
         spot_frame = tk.Frame(p, bg=BG_CARD)
-        spot_frame.pack(fill="x", pady=(0, 4))
+        spot_frame.pack(fill="x", pady=(0, 3))
         spot_frame.columnconfigure(1, weight=2)
         spot_frame.columnconfigure(3, weight=4)
         spot_frame.columnconfigure(5, weight=1)
@@ -1180,16 +1339,50 @@ class SuperJoyWorkstation:
             row=0, column=6, sticky="e", padx=(2, 0), pady=2
         )
 
+        # Multi-Resolution Selector & Retroactive Resolution Override Row
+        res_row = tk.Frame(p, bg=BG_CARD)
+        res_row.pack(fill="x", pady=(2, 3))
+        tk.Label(
+            res_row,
+            text="SLATE RES",
+            font=(FONT, 10, "bold"),
+            bg=BG_CARD,
+            fg=ACCENT_YELLOW,
+        ).pack(side="left", padx=(2, 8))
+        self.batch_res_pills = MultiSelectPills(
+            res_row,
+            options=[
+                ("16x9", "16x9 (1920×1080)"),
+                ("1x1", "1x1 (1080×1080)"),
+                ("4x5", "4x5 (1080×1350)"),
+                ("9x16", "9x16 (1080×1920)"),
+                ("ALL", "ALL 4"),
+            ],
+            initial=[DEFAULT_ASPECT],
+            font_spec=(FONT, 10, "bold"),
+            pad_x=9,
+            pad_y=4,
+        )
+        self.batch_res_pills.pack(side="left")
+        mkbtn(
+            res_row,
+            text="Apply Res to Selected",
+            bg=BG_BLUE,
+            command=self.apply_res_to_selected,
+            padx=12,
+            pady=5,
+        ).pack(side="right")
+
         # Action & Queue Toolbar
         bar = tk.Frame(p, bg=BG_CARD)
-        bar.pack(fill="x", pady=(4, 4))
+        bar.pack(fill="x", pady=(3, 3))
         mkbtn(
             bar,
             text="Auto-Pull Batch from Master Videos",
             bg=BG_BLUE,
             command=lambda: self.populate_batch_from_videos(notify_if_empty=True),
-            padx=16,
-            pady=6,
+            padx=14,
+            pady=5,
         ).pack(side="left")
         mkbtn(
             bar,
@@ -1197,12 +1390,20 @@ class SuperJoyWorkstation:
             bg="#4CAF50",
             command=self.add_to_batch,
             padx=14,
-            pady=6,
+            pady=5,
         ).pack(side="left", padx=(8, 0))
-        mkbtn(bar, text="Remove Selected", bg=BG_GREY, command=self.remove_from_batch, padx=12, pady=6).pack(
+        mkbtn(
+            bar,
+            text="Cycle Selected Res",
+            bg=BG_GREY,
+            command=self.cycle_selected_resolution,
+            padx=12,
+            pady=5,
+        ).pack(side="left", padx=(8, 0))
+        mkbtn(bar, text="Remove Selected", bg=BG_GREY, command=self.remove_from_batch, padx=12, pady=5).pack(
             side="left", padx=(8, 0)
         )
-        mkbtn(bar, text="Clear Batch", bg=BG_GREY, command=self.clear_batch, padx=12, pady=6).pack(
+        mkbtn(bar, text="Clear Batch", bg=BG_GREY, command=self.clear_batch, padx=12, pady=5).pack(
             side="left", padx=(8, 0)
         )
         self.batch_count_lbl = tk.Label(
@@ -1210,23 +1411,25 @@ class SuperJoyWorkstation:
         )
         self.batch_count_lbl.pack(side="right", padx=4)
 
-        # Queue Table
+        # Queue Table (includes RESOLUTION column; tapping RESOLUTION cell cycles 16x9 -> 1x1 -> 4x5 -> 9x16)
         tree_wrap = tk.Frame(p, bg=BORDER_SUBTLE, bd=0, highlightthickness=0)
         tree_wrap.pack(fill="both", expand=True, pady=(2, 0))
-        columns = ("id", "title", "trt", "date", "client", "agency")
+        columns = ("id", "title", "res", "trt", "date", "client", "agency")
         self.tree = ttk.Treeview(tree_wrap, columns=columns, show="headings", height=4)
         self.tree.heading("id", text="AD-ID")
         self.tree.heading("title", text="TITLE (SPACES → _)")
+        self.tree.heading("res", text="RESOLUTION (TAP TO CHANGE)")
         self.tree.heading("trt", text="TRT")
         self.tree.heading("date", text="DATE")
         self.tree.heading("client", text="CLIENT")
         self.tree.heading("agency", text="AGENCY")
-        self.tree.column("id", width=125, anchor="w")
-        self.tree.column("title", width=330, anchor="w")
-        self.tree.column("trt", width=60, anchor="center")
-        self.tree.column("date", width=100, anchor="center")
-        self.tree.column("client", width=120, anchor="w")
-        self.tree.column("agency", width=120, anchor="w")
+        self.tree.column("id", width=115, anchor="w")
+        self.tree.column("title", width=255, anchor="w")
+        self.tree.column("res", width=140, anchor="center")
+        self.tree.column("trt", width=55, anchor="center")
+        self.tree.column("date", width=95, anchor="center")
+        self.tree.column("client", width=105, anchor="w")
+        self.tree.column("agency", width=105, anchor="w")
         self.tree.pack(fill="both", expand=True, padx=1, pady=1)
         self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
         self.tree.bind("<ButtonPress-1>", self._on_tree_tap, add="+")
@@ -1389,7 +1592,7 @@ class SuperJoyWorkstation:
         return "TRIM SLATES (UN-SLATE)" if int(self.active_tab_var.get()) == 2 else "GENERATE .AEP & QUEUE IN AME"
 
     # ------------------------------------------------------------------
-    # Batch Slate Builder (Auto-Pull from Master Video Filenames + Manual Edit)
+    # Batch Slate Builder (Auto-Pull, Multi-Resolution & Retroactive Edit)
     # ------------------------------------------------------------------
     @staticmethod
     def _underscored(text):
@@ -1409,9 +1612,28 @@ class SuperJoyWorkstation:
             "flame": "y" if self.f_flame.get() else "n",
         }
 
+    @staticmethod
+    def _make_slate_entry(shared, ad_id, title, trt, aspect, prev=None):
+        prev = prev or {}
+        asp = aspect if aspect in ASPECT_RESOLUTIONS else DEFAULT_ASPECT
+        return {
+            "agency": shared["agency"] or prev.get("agency", ""),
+            "client": shared["client"] or prev.get("client", ""),
+            "title": title,
+            "id": ad_id,
+            "trt": trt or prev.get("trt", ""),
+            "aspect": asp,
+            "resolution": format_resolution_label(asp),
+            "date": shared["date"],
+            "workspace": shared["workspace"] or prev.get("workspace", ""),
+            "audio": shared["audio"],
+            "copyright": shared["copyright"] or prev.get("copyright", ""),
+            "flame": shared["flame"],
+        }
+
     def populate_batch_from_videos(self, notify_if_empty=False):
         """Scan Master Videos folder and auto-populate Batch Slate Builder with
-        Ad-ID, underscored Title, TRT (60/30/15/06), and today's YYYY_MM_DD date."""
+        Ad-ID, underscored Title, TRT (60/30/15/06), resolution(s), and today's YYYY_MM_DD date."""
         vdir = self.videos_dir.get().strip()
         if not vdir or not os.path.isdir(vdir):
             if notify_if_empty:
@@ -1430,30 +1652,32 @@ class SuperJoyWorkstation:
             self.f_date.set(today_yyyy_mm_dd())
 
         shared = self._current_campaign_fields()
+        existing_by_key = {
+            (item.get("id", "").lower(), item.get("aspect", DEFAULT_ASPECT)): item
+            for item in self.manual_batch_data
+            if item.get("id")
+        }
         existing_by_id = {item["id"].lower(): item for item in self.manual_batch_data if item.get("id")}
+        pill_aspects = self.batch_res_pills.get_selected()
 
         new_batch = []
         for vf in video_files:
             ad_id, title, trt = parse_video_filename(vf)
-            prev = existing_by_id.get(ad_id.lower(), {})
-            slate_data = {
-                "agency": shared["agency"] or prev.get("agency", ""),
-                "client": shared["client"] or prev.get("client", ""),
-                "title": title,
-                "id": ad_id,
-                "trt": trt or prev.get("trt", ""),
-                "date": shared["date"],
-                "workspace": shared["workspace"] or prev.get("workspace", ""),
-                "audio": shared["audio"],
-                "copyright": shared["copyright"] or prev.get("copyright", ""),
-                "flame": shared["flame"],
-            }
-            new_batch.append(slate_data)
+            file_aspect = detect_aspect_from_text(vf)
+            # If user selected multiple resolutions in the pill bar, generate all selected resolutions;
+            # otherwise use the filename's detected aspect ratio (or the active resolution pill).
+            if len(pill_aspects) > 1:
+                target_aspects = pill_aspects
+            else:
+                target_aspects = [file_aspect or pill_aspects[0] or self.aspect_var.get()]
+
+            for asp in target_aspects:
+                prev = existing_by_key.get((ad_id.lower(), asp)) or existing_by_id.get(ad_id.lower(), {})
+                new_batch.append(self._make_slate_entry(shared, ad_id, title, trt, asp, prev))
 
         self.manual_batch_data = new_batch
         self._refresh_tree()
 
-        # Pre-fill the spot preview fields with the first video's extracted metadata
         if new_batch:
             self._loading_row = True
             try:
@@ -1488,12 +1712,17 @@ class SuperJoyWorkstation:
             self.tree.delete(item)
         children = []
         for slate in self.manual_batch_data:
+            asp = slate.get("aspect", DEFAULT_ASPECT)
+            res_lbl = format_resolution_label(asp)
+            slate["aspect"] = asp
+            slate["resolution"] = res_lbl
             cid = self.tree.insert(
                 "",
                 "end",
                 values=(
                     slate["id"],
                     slate["title"],
+                    res_lbl,
                     slate["trt"],
                     slate["date"],
                     slate["client"],
@@ -1508,9 +1737,19 @@ class SuperJoyWorkstation:
 
     def _on_tree_tap(self, e):
         row_id = self.tree.identify_row(e.y)
-        if row_id:
-            self.tree.selection_set(row_id)
-            self._on_tree_select()
+        col_id = self.tree.identify_column(e.x)
+        if not row_id:
+            return
+        idx = self.tree.index(row_id)
+        self.tree.selection_set(row_id)
+        # Single-tap on the RESOLUTION column (#3) immediately cycles that individual slate's resolution!
+        if col_id == "#3" and 0 <= idx < len(self.manual_batch_data):
+            cur_asp = self.manual_batch_data[idx].get("aspect", DEFAULT_ASPECT)
+            next_asp = ASPECT_KEYS[(ASPECT_KEYS.index(cur_asp) + 1) % len(ASPECT_KEYS)] if cur_asp in ASPECT_KEYS else DEFAULT_ASPECT
+            self.manual_batch_data[idx]["aspect"] = next_asp
+            self.manual_batch_data[idx]["resolution"] = format_resolution_label(next_asp)
+            self._refresh_tree(preserve_selection=True)
+        self._on_tree_select()
 
     def _on_tree_select(self, _e=None):
         selected = self.tree.selection()
@@ -1524,10 +1763,85 @@ class SuperJoyWorkstation:
                 self.f_id.set(row.get("id", ""))
                 self.f_title.set(row.get("title", ""))
                 self.f_trt.set(row.get("trt", ""))
+                # Show all resolutions currently queued for this selected row(s)
+                sel_aspects = [
+                    self.manual_batch_data[self.tree.index(s)].get("aspect", DEFAULT_ASPECT)
+                    for s in selected
+                    if 0 <= self.tree.index(s) < len(self.manual_batch_data)
+                ]
+                if sel_aspects:
+                    self.batch_res_pills.set_selected(sel_aspects)
             finally:
                 self._loading_row = False
 
+    def cycle_selected_resolution(self):
+        """Cycle the resolution (16x9 -> 1x1 -> 4x5 -> 9x16) of the currently selected slate(s)."""
+        selected = self.tree.selection()
+        if not selected:
+            self._alert("showinfo", "Select a Slate", "Tap a slate row in the queue table first (or tap its RESOLUTION cell directly).")
+            return
+        new_aspects = []
+        for s in selected:
+            idx = self.tree.index(s)
+            if 0 <= idx < len(self.manual_batch_data):
+                cur_asp = self.manual_batch_data[idx].get("aspect", DEFAULT_ASPECT)
+                next_asp = ASPECT_KEYS[(ASPECT_KEYS.index(cur_asp) + 1) % len(ASPECT_KEYS)] if cur_asp in ASPECT_KEYS else DEFAULT_ASPECT
+                self.manual_batch_data[idx]["aspect"] = next_asp
+                self.manual_batch_data[idx]["resolution"] = format_resolution_label(next_asp)
+                new_aspects.append(next_asp)
+        if new_aspects:
+            self.batch_res_pills.set_selected(new_aspects)
+        self._refresh_tree(preserve_selection=True)
+
+    def apply_res_to_selected(self):
+        """Retroactively change the resolution of selected slate(s), or expand selected spot(s)
+        into multiple resolutions at once based on the active SLATE RES pills."""
+        selected = self.tree.selection()
+        target_aspects = self.batch_res_pills.get_selected()
+        if not selected:
+            self._alert(
+                "showinfo",
+                "Select a Slate",
+                "Select one or more slates in the queue to change or expand their resolution(s).",
+            )
+            return
+
+        sel_indices = sorted(self.tree.index(s) for s in selected if 0 <= self.tree.index(s) < len(self.manual_batch_data))
+        if not sel_indices:
+            return
+
+        if len(target_aspects) == 1:
+            # Retroactively switch each selected slate to the chosen single resolution
+            new_asp = target_aspects[0]
+            for idx in sel_indices:
+                self.manual_batch_data[idx]["aspect"] = new_asp
+                self.manual_batch_data[idx]["resolution"] = format_resolution_label(new_asp)
+            self._refresh_tree(preserve_selection=True)
+        else:
+            # Expand each selected spot to have a slate for every selected resolution
+            shared = self._current_campaign_fields()
+            updated_list = []
+            sel_set = set(sel_indices)
+            for idx, item in enumerate(self.manual_batch_data):
+                if idx in sel_set:
+                    for asp in target_aspects:
+                        updated_list.append(
+                            self._make_slate_entry(
+                                shared,
+                                item.get("id", ""),
+                                item.get("title", ""),
+                                item.get("trt", ""),
+                                asp,
+                                item,
+                            )
+                        )
+                else:
+                    updated_list.append(item)
+            self.manual_batch_data = updated_list
+            self._refresh_tree()
+
     def add_to_batch(self):
+        """Add or retroactively update a spot for one or multiple selected resolutions."""
         raw_id = self.f_id.get().strip()
         raw_title = self._underscored(self.f_title.get())
         raw_trt = self.f_trt.get().strip()
@@ -1536,34 +1850,41 @@ class SuperJoyWorkstation:
             self._alert("showwarning", "Missing Info", "Ad-ID and Title are required to build a slate.")
             return
 
-        # Auto-detect TRT from title if the user left TRT blank
         if not raw_trt:
             _, _, detected_trt = parse_video_filename(f"{raw_id}_{raw_title}")
             raw_trt = detected_trt
 
         shared = self._current_campaign_fields()
-        slate_data = {
-            "agency": shared["agency"],
-            "client": shared["client"],
-            "title": raw_title,
-            "id": raw_id,
-            "trt": raw_trt,
-            "date": shared["date"],
-            "workspace": shared["workspace"],
-            "audio": shared["audio"],
-            "copyright": shared["copyright"],
-            "flame": shared["flame"],
-        }
+        target_aspects = self.batch_res_pills.get_selected()
+        selected_rows = self.tree.selection()
 
-        # If a matching Ad-ID is already in the batch (or selected), update it in place; otherwise append
-        updated = False
-        for i, existing in enumerate(self.manual_batch_data):
-            if existing.get("id", "").lower() == raw_id.lower():
-                self.manual_batch_data[i] = slate_data
-                updated = True
-                break
-        if not updated:
-            self.manual_batch_data.append(slate_data)
+        # If a single row is selected in the table and 1 resolution is chosen, update that exact row in place
+        # (allowing retroactive resolution fixes like 16x9 -> 4x5 or Ad-ID/Title edits on that row).
+        if len(selected_rows) == 1 and len(target_aspects) == 1:
+            sel_idx = self.tree.index(selected_rows[0])
+            if 0 <= sel_idx < len(self.manual_batch_data):
+                existing = self.manual_batch_data[sel_idx]
+                if existing.get("id", "").lower() == raw_id.lower():
+                    self.manual_batch_data[sel_idx] = self._make_slate_entry(
+                        shared, raw_id, raw_title, raw_trt, target_aspects[0], existing
+                    )
+                    self._refresh_tree(preserve_selection=True)
+                    return
+
+        # Otherwise, add or update a slate entry for every selected resolution
+        for asp in target_aspects:
+            entry = self._make_slate_entry(shared, raw_id, raw_title, raw_trt, asp)
+            updated = False
+            for i, existing in enumerate(self.manual_batch_data):
+                if (
+                    existing.get("id", "").lower() == raw_id.lower()
+                    and existing.get("aspect", DEFAULT_ASPECT) == asp
+                ):
+                    self.manual_batch_data[i] = entry
+                    updated = True
+                    break
+            if not updated:
+                self.manual_batch_data.append(entry)
 
         self._refresh_tree()
         self.f_title.set("")
@@ -1572,9 +1893,10 @@ class SuperJoyWorkstation:
 
     def remove_from_batch(self):
         selected = self.tree.selection()
-        for item in selected:
+        for item in reversed(selected):
             idx = self.tree.index(item)
-            del self.manual_batch_data[idx]
+            if 0 <= idx < len(self.manual_batch_data):
+                del self.manual_batch_data[idx]
             self.tree.delete(item)
         self._update_batch_count()
 
@@ -1745,16 +2067,34 @@ class SuperJoyWorkstation:
         success_count = 0
         error_count = 0
 
+        # Count occurrences per Ad-ID so multi-resolution exports get distinct filenames
+        id_counts = {}
+        for d in batch_data:
+            aid = d.get("id", d.get("ad-id", "")).lower()
+            id_counts[aid] = id_counts.get(aid, 0) + 1
+
+        all_videos = sorted(
+            vf for vf in os.listdir(videos_dir) if vf.lower().endswith(VALID_EXTS) and not vf.startswith(".")
+        )
+
         for data in batch_data:
             ad_id = data.get("id", data.get("ad-id", ""))
             title = data.get("title", data.get("name", ""))
             flame_flag = data.get("flame", "").lower() in ("y", "yes", "true", "1")
+            explicit_aspect = data.get("aspect") or detect_aspect_from_text(data.get("resolution", ""))
+            target_aspect = explicit_aspect if explicit_aspect in ASPECT_RESOLUTIONS else None
 
+            # Prefer a master video that matches both Ad-ID and the target aspect token, falling back to Ad-ID match
+            candidates = [vf for vf in all_videos if ad_id_matches(ad_id, vf)]
             matched_video = None
-            for vf in os.listdir(videos_dir):
-                if vf.lower().endswith(VALID_EXTS) and ad_id_matches(ad_id, vf):
-                    matched_video = os.path.join(videos_dir, vf)
-                    break
+            if candidates:
+                if target_aspect:
+                    for vf in candidates:
+                        if detect_aspect_from_text(vf) == target_aspect:
+                            matched_video = os.path.join(videos_dir, vf)
+                            break
+                if not matched_video:
+                    matched_video = os.path.join(videos_dir, candidates[0])
 
             if not matched_video:
                 log_entries.append(
@@ -1763,17 +2103,26 @@ class SuperJoyWorkstation:
                 error_count += 1
                 continue
 
-            final_output_file = os.path.join(output_dir, f"{ad_id}_Slated.mov")
+            if id_counts.get(ad_id.lower(), 0) > 1 and target_aspect:
+                final_output_file = os.path.join(output_dir, f"{ad_id}_{target_aspect}_Slated.mov")
+            else:
+                final_output_file = os.path.join(output_dir, f"{ad_id}_Slated.mov")
 
-            ae_jobs.append(
-                {
-                    "video_path": matched_video,
-                    "final_output": final_output_file,
-                    "flame": flame_flag,
-                    "text_data": data,
-                }
-            )
-            log_entries.append(f"[SUCCESS] Paired {ad_id} -> {os.path.basename(matched_video)}")
+            job_entry = {
+                "video_path": matched_video,
+                "final_output": final_output_file,
+                "flame": flame_flag,
+                "text_data": data,
+            }
+            if target_aspect:
+                tw, th = ASPECT_RESOLUTIONS[target_aspect]
+                job_entry["aspect"] = target_aspect
+                job_entry["width"] = tw
+                job_entry["height"] = th
+
+            ae_jobs.append(job_entry)
+            res_note = f" [{format_resolution_label(target_aspect)}]" if target_aspect else ""
+            log_entries.append(f"[SUCCESS] Paired {ad_id}{res_note} -> {os.path.basename(matched_video)}")
             success_count += 1
 
         with open(log_path, "w", encoding="utf-8") as f:
@@ -1873,8 +2222,9 @@ class SuperJoyWorkstation:
             var ioVid = new ImportOptions(new File(job.video_path));
             var vidItem = app.project.importFile(ioVid);
 
-            // Pick the slate template whose aspect matches the main video (no scaling applied).
-            var tplKey = pickAspect(vidItem.width, vidItem.height);
+            // Use explicit per-slate aspect override if set in Batch Slate Builder; otherwise auto-detect from video.
+            var vidAspect = pickAspect(vidItem.width, vidItem.height);
+            var tplKey = job.aspect ? job.aspect : vidAspect;
             var tplPath = templates[tplKey];
             if (!tplPath) {{ skipped.push(vidItem.name + " (needs " + tplKey + " template)"); continue; }}
 
@@ -1905,13 +2255,13 @@ class SuperJoyWorkstation:
                 }}
             }}
 
-            // Slate + final always conform to the main video's resolution and frame rate;
-            // UI settings are only a fallback if the footage reports no usable values.
-            var compW = vidItem.width > 0 ? vidItem.width : cfg.width;
-            var compH = vidItem.height > 0 ? vidItem.height : cfg.height;
+            // Conform to main video resolution when matching aspect, or use explicit slate resolution override.
+            var compW = (job.aspect && job.aspect !== vidAspect && job.width) ? job.width : (vidItem.width > 0 ? vidItem.width : cfg.width);
+            var compH = (job.aspect && job.aspect !== vidAspect && job.height) ? job.height : (vidItem.height > 0 ? vidItem.height : cfg.height);
             var compFps = vidItem.frameRate > 0 ? vidItem.frameRate : cfg.fps;
             var totalDuration = 7.0 + vidItem.duration;
-            var masterComp = app.project.items.addComp(vidItem.name + "_SLATED", compW, compH, 1.0, totalDuration, compFps);
+            var compName = job.aspect ? (vidItem.name + "_" + job.aspect + "_SLATED") : (vidItem.name + "_SLATED");
+            var masterComp = app.project.items.addComp(compName, compW, compH, 1.0, totalDuration, compFps);
             masterComp.parentFolder = masterFolder;
 
             masterComp.displayStartTime = 3593.0; // 00:59:53:00
