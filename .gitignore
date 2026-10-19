@@ -3,7 +3,8 @@ __pycache__/
 *.py[cod]
 *.log
 dist/
+dist_mstr/
+dist_dmg*/
 build/
 *.spec
-*.dmg
-__pycache__/
+

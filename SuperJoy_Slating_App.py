@@ -20,31 +20,119 @@ import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
 
 # ---------------------------------------------------------------------------
-# Color Palette (Inspired directly by the SuperJoy Broadcast Slate)
+# Theme & Branding Profiles
 # ---------------------------------------------------------------------------
-BG_DARK = "#222538"         # Deep navy-slate background from the slate
-BG_CARD = "#2A2E44"         # Elevated card surface
-BG_DARKER = "#181B29"       # Recessed input / well surface
-BORDER_SUBTLE = "#383D59"   # Soft card & input border
-ACCENT_RED = "#E8453C"      # Signature SuperJoy coral-red
-ACCENT_RED_HOVER = "#F45B52"
-ACCENT_YELLOW = "#F3E052"   # Signature SuperJoy ID/7 countdown yellow
-TEXT_LIGHT = "#FFFFFF"
-TEXT_MUTED = "#9BA3C2"
-BG_GREEN = "#2E9E44"
-BG_GREEN_HOVER = "#37B24D"
-BG_BLUE = "#3B6EA8"
-BG_GREY = "#383E56"
-BG_GREY_HOVER = "#454C68"
-BG_DISABLED = "#4A4F66"
+THEMES = {
+    "superjoy": {
+        "app_title": "SuperJoy Broadcast Slating Workstation",
+        "header_title_bold": "SUPERJOY",
+        "header_title_sub": "  SLATING WORKSTATION",
+        "tagline": "Broadcast Slate Automation  •  ProRes 422 HQ + H.264 (25Mbps)  •  SLATED & UNSLATED Delivery",
+        "project_prefix": "SuperJoy",
+        "default_agency": "MARTIN*",
+        "bg_dark": "#222538",         # Deep navy-slate background from the slate
+        "bg_card": "#2A2E44",         # Elevated card surface
+        "bg_darker": "#181B29",       # Recessed input / well surface
+        "border_subtle": "#383D59",   # Soft card & input border
+        "accent_red": "#E8453C",      # Signature SuperJoy coral-red
+        "accent_red_hover": "#F45B52",
+        "accent_yellow": "#F3E052",   # Signature SuperJoy ID/7 countdown yellow
+        "text_light": "#FFFFFF",
+        "text_muted": "#9BA3C2",
+        "bg_green": "#2E9E44",
+        "bg_green_hover": "#37B24D",
+        "bg_blue": "#3B6EA8",
+        "bg_grey": "#383E56",
+        "bg_grey_hover": "#454C68",
+        "bg_disabled": "#4A4F66",
+        "font_family": "Avenir Next",
+        "font_candidates": ("Avenir Next", "Helvetica Neue", "Helvetica"),
+        "dmg_url_env": "SUPERJOY_UPDATE_DMG_URL",
+        "dmg_url_default": "https://raw.githubusercontent.com/bennfoxx/SlateWorkstation/main/SuperJoy_Slating_Workstation_v1.0.0.dmg",
+        "app_name": "SuperJoy Slating Workstation",
+        "bundle_id": "com.superjoy.slatingworkstation",
+        "logo_style": "superjoy",
+    },
+    "mstr_sl8r": {
+        "app_title": "MSTR-SL8R  •  Broadcast Slating Workstation",
+        "header_title_bold": "MSTR-SL8R",
+        "header_title_sub": "  BROADCAST WORKSTATION",
+        "tagline": "Broadcast Slate Automation  •  ProRes 422 HQ + H.264 (25Mbps)  •  SLATED & UNSLATED Delivery",
+        "project_prefix": "MSTR_SL8R",
+        "default_agency": "MARTIN*",
+        "bg_dark": "#0A0A0C",         # Pitch dark studio background (benfoxmedia.com #000 / #0d0c0e)
+        "bg_card": "#151418",         # Elevate dark card (#17151a)
+        "bg_darker": "#000000",       # Recessed black input / well
+        "border_subtle": "#2A272D",   # Ben Fox Media CSS --line token
+        "accent_red": "#13F1D5",      # Ben Fox Media CSS --bf-aqua (signature vibrant cyan/aqua)
+        "accent_red_hover": "#01D4FB", # Ben Fox Media CSS --bf-cyan
+        "accent_yellow": "#E5C8FF",   # Ben Fox Media CSS --bf-lilac (accent highlights)
+        "text_light": "#FFFFFF",      # Ben Fox Media CSS --fg
+        "text_muted": "#A9A4AD",      # Ben Fox Media CSS --muted
+        "bg_green": "#A8E8C5",        # Ben Fox Media CSS --bf-mint
+        "bg_green_hover": "#B8F0D0",
+        "bg_blue": "#01D4FB",         # Ben Fox Media CSS --bf-cyan
+        "bg_grey": "#2A272D",         # Dark line grey
+        "bg_grey_hover": "#3A363E",
+        "bg_disabled": "#3A363E",
+        "font_family": "Jost",
+        "font_candidates": ("Jost", "Futura", "Century Gothic", "Archivo Narrow", "Helvetica Neue", "Helvetica"),
+        "dmg_url_env": "MSTR_SL8R_UPDATE_DMG_URL",
+        "dmg_url_default": "https://raw.githubusercontent.com/bennfoxx/SlateWorkstation/main/MSTR_SL8R_v1.0.0.dmg",
+        "app_name": "MSTR-SL8R",
+        "bundle_id": "com.benfoxmedia.mstrsl8r",
+        "logo_style": "mstr_sl8r",
+    },
+}
 
-# Preferred UI font (matches the slate). Uses system-local Avenir Next by default.
+# Active Brand Defaults
+ACTIVE_THEME = "superjoy"
+BG_DARK = THEMES["superjoy"]["bg_dark"]
+BG_CARD = THEMES["superjoy"]["bg_card"]
+BG_DARKER = THEMES["superjoy"]["bg_darker"]
+BORDER_SUBTLE = THEMES["superjoy"]["border_subtle"]
+ACCENT_RED = THEMES["superjoy"]["accent_red"]
+ACCENT_RED_HOVER = THEMES["superjoy"]["accent_red_hover"]
+ACCENT_YELLOW = THEMES["superjoy"]["accent_yellow"]
+TEXT_LIGHT = THEMES["superjoy"]["text_light"]
+TEXT_MUTED = THEMES["superjoy"]["text_muted"]
+BG_GREEN = THEMES["superjoy"]["bg_green"]
+BG_GREEN_HOVER = THEMES["superjoy"]["bg_green_hover"]
+BG_BLUE = THEMES["superjoy"]["bg_blue"]
+BG_GREY = THEMES["superjoy"]["bg_grey"]
+BG_GREY_HOVER = THEMES["superjoy"]["bg_grey_hover"]
+BG_DISABLED = THEMES["superjoy"]["bg_disabled"]
+
 FONT = "Avenir Next"
-FONT_CANDIDATES = (
-    "Avenir Next",
-    "Helvetica Neue",
-    "Helvetica",
-)
+FONT_CANDIDATES = THEMES["superjoy"]["font_candidates"]
+
+
+def set_theme(theme_name="superjoy"):
+    """Set the active branding theme globally before creating UI widgets."""
+    global ACTIVE_THEME, BG_DARK, BG_CARD, BG_DARKER, BORDER_SUBTLE
+    global ACCENT_RED, ACCENT_RED_HOVER, ACCENT_YELLOW, TEXT_LIGHT, TEXT_MUTED
+    global BG_GREEN, BG_GREEN_HOVER, BG_BLUE, BG_GREY, BG_GREY_HOVER, BG_DISABLED
+    global FONT, FONT_CANDIDATES
+    key = theme_name.lower().replace("-", "_") if theme_name else "superjoy"
+    cfg = THEMES.get(key, THEMES["superjoy"])
+    ACTIVE_THEME = key if key in THEMES else "superjoy"
+    BG_DARK = cfg["bg_dark"]
+    BG_CARD = cfg["bg_card"]
+    BG_DARKER = cfg["bg_darker"]
+    BORDER_SUBTLE = cfg["border_subtle"]
+    ACCENT_RED = cfg["accent_red"]
+    ACCENT_RED_HOVER = cfg["accent_red_hover"]
+    ACCENT_YELLOW = cfg["accent_yellow"]
+    TEXT_LIGHT = cfg["text_light"]
+    TEXT_MUTED = cfg["text_muted"]
+    BG_GREEN = cfg["bg_green"]
+    BG_GREEN_HOVER = cfg["bg_green_hover"]
+    BG_BLUE = cfg["bg_blue"]
+    BG_GREY = cfg["bg_grey"]
+    BG_GREY_HOVER = cfg["bg_grey_hover"]
+    BG_DISABLED = cfg["bg_disabled"]
+    FONT = cfg["font_family"]
+    FONT_CANDIDATES = cfg["font_candidates"]
 
 
 def pick_font_family():
@@ -1458,20 +1546,36 @@ class RoundedToggle(tk.Canvas):
         self.itemconfigure(self._label_id, fill=TEXT_LIGHT if on else TEXT_MUTED)
 
 
-class SJLogo(tk.Canvas):
-    """Red rounded square with dark outlined smiley (matches the bottom-right slate badge)."""
+class BrandLogo(tk.Canvas):
+    """Branded emblem in the top right header.
+    - SuperJoy: Coral-red rounded square with dark smiley face badge.
+    - MSTR-SL8R: Deep noir badge with electric aqua border and 'M8' studio monogram."""
 
     def __init__(self, parent, size=46):
         parent_bg = parent.cget("bg") if "bg" in parent.keys() else BG_DARK
         super().__init__(parent, width=size, height=size, bg=parent_bg, highlightthickness=0, bd=0, takefocus=0)
-        round_rect(self, 0, 0, size, size, size * 0.20, fill=ACCENT_RED, outline=ACCENT_RED)
-        c, rad, lw = size / 2, size * 0.31, max(2.5, size / 14)
-        self.create_oval(c - rad, c - rad, c + rad, c + rad, outline=BG_DARK, width=lw)
-        ey1, ey2, ex = c - rad * 0.38, c - rad * 0.05, rad * 0.28
-        for dx in (-ex, ex):
-            self.create_line(c + dx, ey1, c + dx, ey2, fill=BG_DARK, width=lw, capstyle="round")
-        self.create_arc(c - rad * 0.48, c - rad * 0.32, c + rad * 0.48, c + rad * 0.52,
-                        start=200, extent=140, style="arc", outline=BG_DARK, width=lw)
+        theme_cfg = THEMES.get(ACTIVE_THEME, THEMES["superjoy"])
+        if theme_cfg.get("logo_style") == "mstr_sl8r":
+            round_rect(self, 0, 0, size, size, size * 0.22, fill=BG_CARD, outline=ACCENT_RED)
+            self.create_text(
+                size / 2,
+                size / 2,
+                text="M8",
+                font=(FONT, int(size * 0.44), "bold"),
+                fill=ACCENT_RED,
+            )
+        else:
+            round_rect(self, 0, 0, size, size, size * 0.20, fill=ACCENT_RED, outline=ACCENT_RED)
+            c, rad, lw = size / 2, size * 0.31, max(2.5, size / 14)
+            self.create_oval(c - rad, c - rad, c + rad, c + rad, outline=BG_DARK, width=lw)
+            ey1, ey2, ex = c - rad * 0.38, c - rad * 0.05, rad * 0.28
+            for dx in (-ex, ex):
+                self.create_line(c + dx, ey1, c + dx, ey2, fill=BG_DARK, width=lw, capstyle="round")
+            self.create_arc(c - rad * 0.48, c - rad * 0.32, c + rad * 0.48, c + rad * 0.52,
+                            start=200, extent=140, style="arc", outline=BG_DARK, width=lw)
+
+
+SJLogo = BrandLogo
 
 
 
@@ -1532,7 +1636,9 @@ class SlatePreviewViewer(tk.Toplevel):
         self._thumb_cache = {}
         self._photo_ref = None
 
-        self.title("SuperJoy Slate Preview Gallery")
+        theme_cfg = THEMES.get(ACTIVE_THEME, THEMES["superjoy"])
+        app_name = theme_cfg.get("app_name", "SuperJoy Slating Workstation")
+        self.title(f"{app_name}  •  Slate Preview Gallery")
         self.geometry("900x720")
         self.minsize(740, 580)
         self.configure(bg=BG_DARK)
@@ -1743,8 +1849,13 @@ def bind_auto_wrap(label, container=None, min_wrap=320, pad=24):
 # Main Workstation Application
 # ---------------------------------------------------------------------------
 class SuperJoyWorkstation:
-    def __init__(self, root):
+    def __init__(self, root, theme=None):
         global FONT
+        if theme:
+            set_theme(theme)
+        self.theme_name = ACTIVE_THEME
+        self.theme_cfg = THEMES.get(self.theme_name, THEMES["superjoy"])
+
         self.root = root
         FONT = pick_font_family()
         for fname in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont"):
@@ -1753,7 +1864,7 @@ class SuperJoyWorkstation:
             except Exception:
                 pass
 
-        self.root.title("SuperJoy Broadcast Slating Workstation")
+        self.root.title(self.theme_cfg.get("app_title", "SuperJoy Broadcast Slating Workstation"))
         self.root.geometry("1020x840")
         self.root.minsize(940, 770)
         self.root.configure(bg=BG_DARK)
@@ -1924,27 +2035,27 @@ class SuperJoyWorkstation:
         title_row.pack(anchor="w")
         tk.Label(
             title_row,
-            text="SUPERJOY",
+            text=self.theme_cfg.get("header_title_bold", "SUPERJOY"),
             font=(FONT, 22, "bold"),
             bg=BG_DARK,
             fg=ACCENT_RED,
         ).pack(side="left")
         tk.Label(
             title_row,
-            text="  SLATING WORKSTATION",
+            text=self.theme_cfg.get("header_title_sub", "  SLATING WORKSTATION"),
             font=(FONT, 22, "bold"),
             bg=BG_DARK,
             fg=TEXT_LIGHT,
         ).pack(side="left")
         tk.Label(
             title_col,
-            text="Broadcast Slate Automation  •  ProRes 422 HQ + H.264 (25Mbps)  •  SLATED & UNSLATED Delivery",
+            text=self.theme_cfg.get("tagline", "Broadcast Slate Automation  •  ProRes 422 HQ + H.264 (25Mbps)  •  SLATED & UNSLATED Delivery"),
             font=(FONT, 11),
             bg=BG_DARK,
             fg=TEXT_MUTED,
         ).pack(anchor="w", pady=(1, 0))
 
-        SJLogo(header, 46).pack(side="right", padx=(12, 0))
+        BrandLogo(header, 46).pack(side="right", padx=(12, 0))
         self.btn_update = mkbtn(
             header,
             text="↻ Update App",
@@ -2551,6 +2662,8 @@ class SuperJoyWorkstation:
 
     def _build_tab_unslate(self):
         p = self.tab_unslate
+        theme_cfg = getattr(self, "theme_cfg", THEMES.get(ACTIVE_THEME, THEMES["superjoy"]))
+        pfx = theme_cfg.get("project_prefix", "SuperJoy")
 
         tk.Label(
             p,
@@ -2561,7 +2674,7 @@ class SuperJoyWorkstation:
         ).pack(anchor="w", pady=(4, 2))
         unslate_desc = tk.Label(
             p,
-            text="Builds non-destructive un-slated comps in After Effects (trimming the 5.0s slate + 2.0s black/2-pop leader), saves an editable SuperJoy_Unslate_Project.aep for manual fixes, and queues ProRes 422 HQ (.mov) + H.264 25Mbps (.mp4) into UNSLATED/ProRes and UNSLATED/h264.",
+            text=f"Builds non-destructive un-slated comps in After Effects (trimming the 5.0s slate + 2.0s black/2-pop leader), saves an editable {pfx}_Unslate_Project.aep for manual fixes, and queues ProRes 422 HQ (.mov) + H.264 25Mbps (.mp4) into UNSLATED/ProRes and UNSLATED/h264.",
             font=(FONT, 12),
             bg=BG_CARD,
             fg=TEXT_MUTED,
@@ -2606,9 +2719,9 @@ class SuperJoyWorkstation:
         ).pack(anchor="w", pady=(0, 6))
         trim_spec_lbl = tk.Label(
             tb,
-            text="• Trims exactly 7.0 seconds from the head of every .mov, .mp4, and .mxf file (preserving picture/audio from 01:00:00:00 onward).\n"
-                 "• Saves SuperJoy_Unslate_Project.aep so you can inspect timelines or make manual slip/trim adjustments.\n"
-                 "• Queues trimmed outputs in Adobe Media Encoder to UNSLATED/ProRes (Apple ProRes 422 HQ) and UNSLATED/h264 (H.264 25Mbps).",
+            text=f"• Trims exactly 7.0 seconds from the head of every .mov, .mp4, and .mxf file (preserving picture/audio from 01:00:00:00 onward).\n"
+                 f"• Saves {pfx}_Unslate_Project.aep so you can inspect timelines or make manual slip/trim adjustments.\n"
+                 f"• Queues trimmed outputs in Adobe Media Encoder to UNSLATED/ProRes (Apple ProRes 422 HQ) and UNSLATED/h264 (H.264 25Mbps).",
             font=(FONT, 12),
             bg=BG_DARKER,
             fg=TEXT_MUTED,
@@ -2785,14 +2898,16 @@ class SuperJoyWorkstation:
                 self._alert("showwarning", "README", f"Could not launch viewer: {e}")
                 return
 
+        theme_cfg = getattr(self, "theme_cfg", THEMES.get(ACTIVE_THEME, THEMES["superjoy"]))
+        app_name = theme_cfg.get("app_name", "SuperJoy Slating Workstation")
         self._alert(
             "showinfo",
-            "SuperJoy Slating Workstation",
-            "SuperJoy Slating Workstation v1.0.0\n\n"
+            app_name,
+            f"{app_name} v1.0.0\n\n"
             "• Standalone Slates: Renders native resolution 5s slates directly in After Effects.\n"
             "• Slated Comps: 5s Slate + 2-Pop at 5:00 + 2s Black + Master Video.\n"
             "• Un-slated Comps: Clean master video exported starting at 01:00:00:00.\n"
-            "• All slates use system-local Avenir Next typography."
+            "• All slates use system-local typography."
         )
 
     def create_copy_of_template_spreadsheet(self):
@@ -3665,7 +3780,10 @@ class SuperJoyWorkstation:
         settings["ae_seed_aep"] = presets.get("ae_seed_aep", "")
         settings["auto_transcode"] = auto_transcode
 
-        aep_marry_path = os.path.join(output_dir, "SuperJoy_Married_Slates.aep")
+        theme_cfg = getattr(self, "theme_cfg", THEMES.get(ACTIVE_THEME, THEMES["superjoy"]))
+        pfx = theme_cfg.get("project_prefix", "SuperJoy")
+        hdr_brand = theme_cfg.get("header_title_bold", "SUPERJOY")
+        aep_marry_path = os.path.join(output_dir, f"{pfx}_Married_Slates.aep")
         beep_path = os.path.join(output_dir, "_2pop_1kHz_1frame.wav")
         jsx_path = os.path.join(output_dir, "_temp_ae_marry.jsx")
         log_path = os.path.join(output_dir, "Marry_Results_Log.txt")
@@ -3674,7 +3792,7 @@ class SuperJoyWorkstation:
 
         marry_jobs = []
         log_lines = [
-            "SUPERJOY AE/AME MARRY EXISTING SLATES + VIDEOS LOG",
+            f"{hdr_brand} AE/AME MARRY EXISTING SLATES + VIDEOS LOG",
             "=" * 56,
             f"Slates Folder:   {slates_dir}",
             f"Videos Folder:   {videos_dir}",
@@ -4074,13 +4192,16 @@ class SuperJoyWorkstation:
             self.root.after(0, self.reset_ui)
             return
 
-        aep_unslate_path = os.path.join(out_dir, "SuperJoy_Unslate_Project.aep")
+        theme_cfg = getattr(self, "theme_cfg", THEMES.get(ACTIVE_THEME, THEMES["superjoy"]))
+        pfx = theme_cfg.get("project_prefix", "SuperJoy")
+        hdr_brand = theme_cfg.get("header_title_bold", "SUPERJOY")
+        aep_unslate_path = os.path.join(out_dir, f"{pfx}_Unslate_Project.aep")
         jsx_path = os.path.join(out_dir, "_temp_ae_unslate.jsx")
         log_path = os.path.join(out_dir, "Unslate_Log.txt")
 
         unslate_jobs = []
         log_lines = [
-            "SUPERJOY AE/AME UN-SLATE (7.0s HEAD TRIM) LOG",
+            f"{hdr_brand} AE/AME UN-SLATE (7.0s HEAD TRIM) LOG",
             "=" * 52,
             f"Source Folder:   {folder}",
             f"Unslated ProRes: {folders['unslated_prores']}",
@@ -4391,11 +4512,15 @@ class SuperJoyWorkstation:
         render_cfg["slates_only"] = bool(slates_only)
 
         log_path = os.path.join(output_dir, "Slating_Results_Log.txt")
-        proj_filename = f"{workspace_token}_SLATES.aep" if workspace_token else ("SuperJoy_Standalone_Slates.aep" if slates_only else "SuperJoy_Master_Slates.aep")
+        theme_cfg = getattr(self, "theme_cfg", THEMES.get(ACTIVE_THEME, THEMES["superjoy"]))
+        pfx = theme_cfg.get("project_prefix", "SuperJoy")
+        hdr_brand = theme_cfg.get("header_title_bold", "SUPERJOY")
+        default_proj = f"{pfx}_Standalone_Slates.aep" if slates_only else f"{pfx}_Master_Slates.aep"
+        proj_filename = f"{workspace_token}_SLATES.aep" if workspace_token else default_proj
         aep_master_path = os.path.join(output_dir, proj_filename)
         beep_path = os.path.join(output_dir, "_2pop_1kHz_1frame.wav")
         log_entries = [
-            f"SUPERJOY AE/AME {'STANDALONE SLATES' if slates_only else 'SLATING + H.264 TRANSCODE'} RESULTS LOG",
+            f"{hdr_brand} AE/AME {'STANDALONE SLATES' if slates_only else 'SLATING + H.264 TRANSCODE'} RESULTS LOG",
             "=" * 64,
             f"Template AEP:    {templates.get('_aep', template_dir)}",
             f"Output Root:     {output_dir}",
@@ -4651,15 +4776,16 @@ class SuperJoyWorkstation:
     # One-Click GitHub DMG Self-Updater
     # ------------------------------------------------------------------
     def prompt_self_update(self):
-        dmg_url = os.environ.get(
-            "SUPERJOY_UPDATE_DMG_URL",
-            "https://raw.githubusercontent.com/bennfoxx/SlateWorkstation/main/SuperJoy_Slating_Workstation_v1.0.0.dmg",
-        )
+        theme_cfg = getattr(self, "theme_cfg", THEMES.get(ACTIVE_THEME, THEMES["superjoy"]))
+        dmg_env = theme_cfg.get("dmg_url_env", "SUPERJOY_UPDATE_DMG_URL")
+        dmg_def = theme_cfg.get("dmg_url_default", "https://raw.githubusercontent.com/bennfoxx/SlateWorkstation/main/SuperJoy_Slating_Workstation_v1.0.0.dmg")
+        app_name = theme_cfg.get("app_name", "SuperJoy Slating Workstation")
+        dmg_url = os.environ.get(dmg_env, dmg_def)
         ans = messagebox.askyesno(
-            "Update SuperJoy Slating Workstation",
-            "Download the latest SuperJoy Slating Workstation build from GitHub and update your local app now?\n\n"
-            "• Source: github.com/bennfoxx/SlateWorkstation\n"
-            "• Installs to: /Applications/SuperJoy Slating Workstation.app\n"
+            f"Update {app_name}",
+            f"Download the latest {app_name} build from GitHub and update your local app now?\n\n"
+            f"• Source: github.com/bennfoxx/SlateWorkstation\n"
+            f"• Installs to: /Applications/{app_name}.app\n"
             "• Automatically clears macOS Gatekeeper quarantine and relaunches the app.",
         )
         reset_tk_mouse_state(self.root)
@@ -4673,8 +4799,10 @@ class SuperJoyWorkstation:
     def _run_self_update_worker(self, dmg_url):
         import tempfile
 
-        tmp_dir = tempfile.mkdtemp(prefix="sj_update_")
-        dmg_path = os.path.join(tmp_dir, "SuperJoy_Update.dmg")
+        theme_cfg = getattr(self, "theme_cfg", THEMES.get(ACTIVE_THEME, THEMES["superjoy"]))
+        app_name = theme_cfg.get("app_name", "SuperJoy Slating Workstation")
+        tmp_dir = tempfile.mkdtemp(prefix="update_")
+        dmg_path = os.path.join(tmp_dir, "App_Update.dmg")
         mount_point = os.path.join(tmp_dir, "mnt")
         os.makedirs(mount_point, exist_ok=True)
         cache_bust_url = f"{dmg_url}?t={int(time.time())}"
@@ -4702,7 +4830,7 @@ class SuperJoyWorkstation:
                 timeout=60,
             )
 
-            src_app = os.path.join(mount_point, "SuperJoy Slating Workstation.app")
+            src_app = os.path.join(mount_point, f"{app_name}.app")
             if not os.path.isdir(src_app):
                 candidates = glob.glob(os.path.join(mount_point, "*.app"))
                 if candidates:
@@ -4716,7 +4844,7 @@ class SuperJoyWorkstation:
             if ".app/Contents/" in exe_path:
                 current_app = exe_path.split(".app/Contents/")[0] + ".app"
 
-            apps_target = "/Applications/SuperJoy Slating Workstation.app"
+            apps_target = f"/Applications/{app_name}.app"
             if current_app and not current_app.startswith("/Volumes/") and os.access(os.path.dirname(current_app), os.W_OK):
                 primary_target = current_app
             else:
@@ -5316,7 +5444,16 @@ open "{primary_target}"
 
 
 if __name__ == "__main__":
+    theme_arg = os.environ.get("SLATE_WORKSTATION_THEME", "superjoy")
+    for arg in sys.argv[1:]:
+        if arg.startswith("--theme="):
+            theme_arg = arg.split("=", 1)[1]
+        elif arg in ("--mstr-sl8r", "--mstr_sl8r", "-mstr"):
+            theme_arg = "mstr_sl8r"
+        elif arg in ("--superjoy", "-sj"):
+            theme_arg = "superjoy"
+
     root = tk.Tk()
-    app = SuperJoyWorkstation(root)
+    app = SuperJoyWorkstation(root, theme=theme_arg)
     root.mainloop()
 
