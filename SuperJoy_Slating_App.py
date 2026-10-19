@@ -1675,6 +1675,15 @@ class SuperJoyWorkstation:
         ).pack(anchor="w", pady=(1, 0))
 
         SJLogo(header, 46).pack(side="right", padx=(12, 0))
+        self.btn_update = mkbtn(
+            header,
+            text="↻ Update App",
+            bg=BG_BLUE,
+            command=self.prompt_self_update,
+            padx=14,
+            pady=6,
+        )
+        self.btn_update.pack(side="right", padx=(8, 4))
 
         # 2. Pinned Bottom Action Footer (packed BEFORE expandable workspace so it is NEVER clipped!)
         footer = tk.Frame(self.root, bg=BG_DARK)
@@ -4137,6 +4146,157 @@ class SuperJoyWorkstation:
     def reset_ui(self):
         self.btn_run.config(text=self.run_label(), state="normal")
         reset_tk_mouse_state(self.root)
+
+    # ------------------------------------------------------------------
+    # One-Click GitHub DMG Self-Updater
+    # ------------------------------------------------------------------
+    def prompt_self_update(self):
+        dmg_url = os.environ.get(
+            "SUPERJOY_UPDATE_DMG_URL",
+            "https://raw.githubusercontent.com/bennfoxx/SlateWorkstation/main/SuperJoy_Slating_Workstation_v1.0.0.dmg",
+        )
+        ans = messagebox.askyesno(
+            "Update SuperJoy Slating Workstation",
+            "Download the latest SuperJoy Slating Workstation build from GitHub and update your local app now?\n\n"
+            "• Source: github.com/bennfoxx/SlateWorkstation\n"
+            "• Installs to: /Applications/SuperJoy Slating Workstation.app\n"
+            "• Automatically clears macOS Gatekeeper quarantine and relaunches the app.",
+        )
+        reset_tk_mouse_state(self.root)
+        if not ans:
+            return
+        if hasattr(self, "btn_update"):
+            self.btn_update.config(text="Updating...", state="disabled")
+        self.asset_status_lbl.config(text="Downloading latest DMG from GitHub...", fg=ACCENT_YELLOW)
+        threading.Thread(target=self._run_self_update_worker, args=(dmg_url,), daemon=True).start()
+
+    def _run_self_update_worker(self, dmg_url):
+        import tempfile
+
+        tmp_dir = tempfile.mkdtemp(prefix="sj_update_")
+        dmg_path = os.path.join(tmp_dir, "SuperJoy_Update.dmg")
+        mount_point = os.path.join(tmp_dir, "mnt")
+        os.makedirs(mount_point, exist_ok=True)
+        cache_bust_url = f"{dmg_url}?t={int(time.time())}"
+
+        try:
+            # 1. Download latest DMG from GitHub
+            subprocess.run(
+                ["curl", "-fL", "--retry", "2", "--connect-timeout", "15", "-o", dmg_path, cache_bust_url],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+
+            self.root.after(
+                0, lambda: self.asset_status_lbl.config(text="Mounting update image...", fg=ACCENT_YELLOW)
+            )
+
+            # 2. Attach DMG to temporary mount point
+            subprocess.run(
+                ["hdiutil", "attach", dmg_path, "-mountpoint", mount_point, "-nobrowse", "-quiet"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+
+            src_app = os.path.join(mount_point, "SuperJoy Slating Workstation.app")
+            if not os.path.isdir(src_app):
+                candidates = glob.glob(os.path.join(mount_point, "*.app"))
+                if candidates:
+                    src_app = candidates[0]
+                else:
+                    raise RuntimeError("No .app bundle found inside the downloaded DMG.")
+
+            # 3. Determine target .app path(s) to update
+            exe_path = os.path.abspath(sys.executable)
+            current_app = None
+            if ".app/Contents/" in exe_path:
+                current_app = exe_path.split(".app/Contents/")[0] + ".app"
+
+            apps_target = "/Applications/SuperJoy Slating Workstation.app"
+            if current_app and not current_app.startswith("/Volumes/") and os.access(os.path.dirname(current_app), os.W_OK):
+                primary_target = current_app
+            else:
+                primary_target = apps_target
+
+            # Also pull latest git repo files if running from a git checkout
+            repo_dir = os.path.dirname(os.path.abspath(__file__))
+            if os.path.isdir(os.path.join(repo_dir, ".git")):
+                try:
+                    subprocess.run(
+                        ["git", "-C", repo_dir, "pull", "--ff-only", "origin", "main"],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+                except Exception:
+                    pass
+
+            # 4. Spawn detached installer script that swaps the .app bundle, strips quarantine, unmounts DMG, and relaunches
+            updater_sh = os.path.join(tmp_dir, "apply_update.sh")
+            pid = os.getpid()
+            sh_content = f"""#!/bin/bash
+sleep 1
+kill -9 {pid} 2>/dev/null || true
+for i in $(seq 1 20); do
+    if ! kill -0 {pid} 2>/dev/null; then break; fi
+    sleep 0.2
+done
+
+rm -rf "{primary_target}"
+ditto "{src_app}" "{primary_target}"
+xattr -cr "{primary_target}" 2>/dev/null || true
+
+if [ "{primary_target}" != "{apps_target}" ] && [ -w "/Applications" ]; then
+    rm -rf "{apps_target}"
+    ditto "{src_app}" "{apps_target}"
+    xattr -cr "{apps_target}" 2>/dev/null || true
+fi
+
+hdiutil detach "{mount_point}" -force >/dev/null 2>&1 || true
+rm -rf "{tmp_dir}" >/dev/null 2>&1 || true
+
+open "{primary_target}"
+"""
+            with open(updater_sh, "w", encoding="utf-8") as f:
+                f.write(sh_content)
+            os.chmod(updater_sh, 0o755)
+
+            def _finish_and_relaunch():
+                if hasattr(self, "btn_update"):
+                    self.btn_update.config(text="↻ Update App", state="normal")
+                self._alert(
+                    "showinfo",
+                    "Update Ready — Relaunching",
+                    f"Latest version downloaded from GitHub!\n\n"
+                    f"SuperJoy Slating Workstation will now install to:\n{primary_target}\n\nand relaunch automatically.",
+                )
+                subprocess.Popen(
+                    ["/bin/bash", updater_sh],
+                    start_new_session=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                self.root.after(150, self.root.destroy)
+
+            self.root.after(0, _finish_and_relaunch)
+
+        except Exception as e:
+            try:
+                subprocess.run(["hdiutil", "detach", mount_point, "-force"], capture_output=True, timeout=15)
+            except Exception:
+                pass
+
+            def _on_err(err_msg=str(e)):
+                if hasattr(self, "btn_update"):
+                    self.btn_update.config(text="↻ Update App", state="normal")
+                self.asset_status_lbl.config(text="Update failed.", fg=ACCENT_RED)
+                self._alert("showerror", "Update Failed", f"Could not update from GitHub:\n{err_msg}")
+
+            self.root.after(0, _on_err)
 
     def write_jsx(self, path, jobs, aep_path, beep_path, settings, templates):
         # Work from a private copy of the .aep so the original template is never opened/locked in AE
