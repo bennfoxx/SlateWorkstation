@@ -355,8 +355,20 @@ def parse_metadata_file(path):
     if path.lower().endswith(".xlsx"):
         reader = parse_xlsx_rows(path)
     else:
-        with open(path, "r", encoding="utf-8-sig", newline="") as f:
-            raw_lines = [line for line in f if line.strip()]
+        with open(path, "rb") as f:
+            data = f.read()
+        # Excel on Mac saves "Text (Tab delimited)" as Mac Roman, Windows as cp1252, others UTF-8/UTF-16
+        if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+            text = data.decode("utf-16")
+        else:
+            for enc in ("utf-8-sig", "mac_roman", "cp1252", "latin-1"):
+                try:
+                    text = data.decode(enc)
+                    break
+                except UnicodeDecodeError:
+                    continue
+        text = text.replace("\xa0", " ")  # non-breaking spaces from Excel
+        raw_lines = [line for line in text.splitlines(True) if line.strip()]
         if not raw_lines:
             return []
         delimiter = "\t" if "\t" in raw_lines[0] else ","
