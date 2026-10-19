@@ -506,6 +506,34 @@ def verify_jsx_status(jsx_path, expect_queue=True):
     return info
 
 
+def execute_ae_script_file(jsx_path, timeout=3600):
+    """Safely run a JSX script in Adobe After Effects using AppleScript DoScript with override.
+    Passing the script code directly with 'with override' prevents:
+    1. 'Attempt was made to run a second script while another script was already running' warning.
+    2. File-not-found / path escaping issues with POSIX file objects."""
+    ensure_ae_script_permissions()
+    with open(jsx_path, "r", encoding="utf-8") as f:
+        code = f.read()
+
+    ae_target = resolve_ae_applescript_target()
+    applescript = f'''
+    on run argv
+        set jsCode to item 1 of argv
+        tell {ae_target}
+            activate
+            DoScript jsCode with override
+        end tell
+    end run
+    '''
+    return subprocess.run(
+        ["osascript", "-e", applescript, code],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+
 AE_SCRIPT_PREF_KEY = "Pref_SCRIPTING_FILE_NETWORK_SECURITY"
 
 
@@ -1493,6 +1521,183 @@ class HelpCircleButton(tk.Canvas):
         return "break"
 
 
+class SlatePreviewViewer(tk.Toplevel):
+    """Dependency-free static slate preview gallery (macOS native via sips & Tk PhotoImage).
+    Lets users flip through the first frame (time = 0.0s) of every generated slate comp."""
+
+    def __init__(self, parent, preview_items, initial_index=0):
+        super().__init__(parent)
+        self.preview_items = [p for p in (preview_items or []) if p and os.path.isfile(p.get("image_path", ""))]
+        self.current_idx = max(0, min(initial_index, len(self.preview_items) - 1)) if self.preview_items else 0
+        self._thumb_cache = {}
+        self._photo_ref = None
+
+        self.title("SuperJoy Slate Preview Gallery")
+        self.geometry("900x720")
+        self.minsize(740, 580)
+        self.configure(bg=BG_DARK)
+        self.transient(parent)
+
+        self._build_ui()
+        self._bind_keys()
+        self._show_current()
+
+    def _build_ui(self):
+        # Header Info Card
+        hdr = RoundedCard(self, bg_fill=BG_CARD, border_color=BORDER_SUBTLE, radius=12, pad=12)
+        hdr.pack(fill="x", padx=18, pady=(14, 8))
+        hb = hdr.body
+
+        top_row = tk.Frame(hb, bg=BG_CARD)
+        top_row.pack(fill="x")
+        self.spot_counter_lbl = tk.Label(top_row, text="", font=(FONT, 14, "bold"), bg=BG_CARD, fg=ACCENT_RED)
+        self.spot_counter_lbl.pack(side="left")
+        self.aspect_lbl = tk.Label(top_row, text="", font=(FONT, 12, "bold"), bg=BG_CARD, fg=ACCENT_YELLOW)
+        self.aspect_lbl.pack(side="right")
+
+        self.title_lbl = tk.Label(hb, text="", font=(FONT, 13), bg=BG_CARD, fg=TEXT_LIGHT, anchor="w", justify="left")
+        self.title_lbl.pack(fill="x", pady=(4, 0))
+        bind_auto_wrap(self.title_lbl, hb)
+
+        # Image Display Area
+        img_wrap = tk.Frame(self, bg=BG_DARKER, highlightthickness=1, highlightbackground=BORDER_SUBTLE)
+        img_wrap.pack(fill="both", expand=True, padx=18, pady=6)
+        self.img_label = tk.Label(img_wrap, bg=BG_DARKER)
+        self.img_label.pack(fill="both", expand=True, padx=10, pady=10)
+        self.img_label.bind("<Configure>", self._on_resize_viewport)
+
+        # Footer Navigation Bar
+        nav = tk.Frame(self, bg=BG_DARK)
+        nav.pack(fill="x", padx=18, pady=(8, 14))
+
+        self.btn_prev = RoundedButton(
+            nav, text="◀ Previous", command=self.prev_slate, color=BG_GREY, padx=20, pady=8, radius=10
+        )
+        self.btn_prev.pack(side="left")
+
+        self.btn_next = RoundedButton(
+            nav, text="Next ▶", command=self.next_slate, color=ACCENT_RED, padx=24, pady=8, radius=10
+        )
+        self.btn_next.pack(side="left", padx=(10, 0))
+
+        self.btn_folder = RoundedButton(
+            nav, text="Open Folder", command=self._open_containing_folder, color=BG_BLUE, padx=16, pady=8, radius=10
+        )
+        self.btn_folder.pack(side="right")
+
+        self.btn_close = RoundedButton(
+            nav, text="Close", command=self.destroy, color=BG_DARKER, padx=18, pady=8, radius=10
+        )
+        self.btn_close.pack(side="right", padx=(0, 10))
+
+    def _bind_keys(self):
+        self.bind("<Left>", lambda _e: self.prev_slate())
+        self.bind("<Right>", lambda _e: self.next_slate())
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.bind("<space>", lambda _e: self.next_slate())
+
+    def _on_resize_viewport(self, event):
+        # Debounce or redraw current image when window is noticeably resized
+        if event.width > 100 and event.height > 100:
+            self._show_current()
+
+    def prev_slate(self):
+        if not self.preview_items:
+            return
+        if self.current_idx > 0:
+            self.current_idx -= 1
+            self._show_current()
+
+    def next_slate(self):
+        if not self.preview_items:
+            return
+        if self.current_idx < len(self.preview_items) - 1:
+            self.current_idx += 1
+            self._show_current()
+
+    def _show_current(self):
+        if not self.preview_items:
+            self.spot_counter_lbl.config(text="No slate previews available")
+            self.title_lbl.config(text="")
+            self.aspect_lbl.config(text="")
+            self.img_label.config(image="", text="No preview snapshot found.", fg=TEXT_MUTED)
+            return
+
+        item = self.preview_items[self.current_idx]
+        total = len(self.preview_items)
+        ad_id = item.get("id", "UNKNOWN")
+        aspect = item.get("aspect", "")
+        title = item.get("title", "")
+        img_path = item.get("image_path", "")
+
+        self.spot_counter_lbl.config(text=f"Spot {self.current_idx + 1} of {total}:  {ad_id}")
+        self.aspect_lbl.config(text=f"[{aspect}]" if aspect else "")
+        self.title_lbl.config(text=f"Title: {title}" if title else f"File: {os.path.basename(img_path)}")
+
+        # Update button states
+        if self.current_idx == 0:
+            self.btn_prev.config(state="disabled")
+        else:
+            self.btn_prev.config(state="normal")
+
+        if self.current_idx == total - 1:
+            self.btn_next.config(state="disabled")
+        else:
+            self.btn_next.config(state="normal")
+
+        # Load & display image
+        photo = self._get_scaled_photo(img_path)
+        if photo:
+            self._photo_ref = photo  # keep reference to prevent garbage collection
+            self.img_label.config(image=photo, text="")
+        else:
+            self.img_label.config(image="", text=f"Could not load preview:\n{img_path}", fg=ACCENT_RED)
+
+    def _get_scaled_photo(self, src_path):
+        if not src_path or not os.path.isfile(src_path):
+            return None
+
+        # Determine target bounding box based on current window/viewport size
+        vw = max(480, self.img_label.winfo_width() - 20) if self.img_label.winfo_width() > 100 else 760
+        vh = max(320, self.img_label.winfo_height() - 20) if self.img_label.winfo_height() > 100 else 460
+
+        cache_key = (src_path, vw // 20, vh // 20)  # bucket to avoid rescales on 1px jitter
+        if cache_key in self._thumb_cache and os.path.isfile(self._thumb_cache[cache_key]):
+            try:
+                return tk.PhotoImage(file=self._thumb_cache[cache_key])
+            except Exception:
+                pass
+
+        # Use macOS built-in /usr/bin/sips to downscale cleanly without any external packages
+        import tempfile
+        out_thumb = tempfile.mktemp(prefix="sj_prev_", suffix=".png")
+        try:
+            # -Z <maxDimension> scales image down preserving aspect ratio
+            max_dim = max(vw, vh)
+            subprocess.run(
+                ["/usr/bin/sips", "-Z", str(max_dim), src_path, "--out", out_thumb],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            photo = tk.PhotoImage(file=out_thumb)
+            self._thumb_cache[cache_key] = out_thumb
+            return photo
+        except Exception:
+            try:
+                return tk.PhotoImage(file=src_path)
+            except Exception:
+                return None
+
+    def _open_containing_folder(self):
+        if not self.preview_items:
+            return
+        item = self.preview_items[self.current_idx]
+        p = item.get("image_path", "")
+        if p and os.path.exists(p):
+            subprocess.Popen(["open", "-R", p])
+
+
 def mkbtn(parent, text="", command=None, bg=None, padx=18, pady=8, **_ignored):
     color = {
         "#4CAF50": BG_GREEN,
@@ -1581,6 +1786,8 @@ class SuperJoyWorkstation:
         self.active_tab_var = tk.StringVar(value="1")  # Open on Batch Slate Builder by default
         self.manual_batch_data = []
         self.marry_pairs_data = []
+        self.latest_previews = []
+        self.preview_viewer_window = None
         self._loading_row = False
 
         # Shared campaign fields (filled in by user) + per-spot fields (pulled from master video filenames or spreadsheet)
@@ -1731,6 +1938,15 @@ class SuperJoyWorkstation:
             pady=6,
         )
         self.btn_update.pack(side="right", padx=(8, 4))
+        self.btn_view_previews = mkbtn(
+            header,
+            text="👁 Slate Previews",
+            bg=BG_GREY,
+            command=self.open_preview_viewer,
+            padx=14,
+            pady=6,
+        )
+        self.btn_view_previews.pack(side="right", padx=(4, 4))
 
         # 2. Pinned Bottom Action Footer (packed BEFORE expandable workspace so it is NEVER clipped!)
         footer = tk.Frame(self.root, bg=BG_DARK)
@@ -2546,6 +2762,38 @@ class SuperJoyWorkstation:
             "• Un-slated Comps: Clean master video exported starting at 01:00:00:00.\n"
             "• All slates use system-local Avenir Next typography."
         )
+
+    def open_preview_viewer(self):
+        """Open the static slate preview gallery viewer."""
+        previews = [p for p in getattr(self, "latest_previews", []) if p and os.path.isfile(p.get("image_path", ""))]
+        if not previews:
+            # Check current output dir for any previously generated preview PNGs
+            odir = resolve_path_input(self.output_dir.get())
+            if odir and os.path.isdir(odir):
+                pdir = os.path.join(odir, "_previews")
+                if os.path.isdir(pdir):
+                    pngs = sorted([f for f in os.listdir(pdir) if f.lower().endswith(".png") and not f.startswith(".")])
+                    for png in pngs:
+                        previews.append({
+                            "id": png.replace("_preview.png", "").replace(".png", ""),
+                            "aspect": "",
+                            "title": png,
+                            "image_path": os.path.join(pdir, png),
+                        })
+        if not previews:
+            self._alert(
+                "showinfo",
+                "No Slate Previews",
+                "No completed slate previews available yet.\n\n"
+                "Run a batch in Standalone Slates or Slated Masters mode to automatically render preview snapshots.",
+            )
+            return
+
+        if self.preview_viewer_window and self.preview_viewer_window.winfo_exists():
+            self.preview_viewer_window.destroy()
+
+        self.preview_viewer_window = SlatePreviewViewer(self.root, previews)
+        self.preview_viewer_window.focus_set()
 
     # ------------------------------------------------------------------
     # Batch Slate Builder (Auto-Pull, Multi-Resolution & Retroactive Edit)
@@ -3382,26 +3630,9 @@ class SuperJoyWorkstation:
 
         ensure_ame_running()
         clear_jsx_status(jsx_path)
-        ae_target = resolve_ae_applescript_target()
-        applescript = f'''
-        on run argv
-            set jsxPath to POSIX file (item 1 of argv)
-            tell {ae_target}
-                activate
-                DoScriptFile jsxPath
-            end tell
-        end run
-        '''
 
         try:
-            ensure_ae_script_permissions()
-            subprocess.run(
-                ["osascript", "-e", applescript, jsx_path],
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=3600,
-            )
+            execute_ae_script_file(jsx_path)
             verify_jsx_status(jsx_path)
             msg = (
                 f"Married {len(marry_jobs)} existing slate(s) + master video(s) and queued in AME!\n\n"
@@ -3783,26 +4014,9 @@ class SuperJoyWorkstation:
 
         ensure_ame_running()
         clear_jsx_status(jsx_path)
-        ae_target = resolve_ae_applescript_target()
-        applescript = f'''
-        on run argv
-            set jsxPath to POSIX file (item 1 of argv)
-            tell {ae_target}
-                activate
-                DoScriptFile jsxPath
-            end tell
-        end run
-        '''
 
         try:
-            ensure_ae_script_permissions()
-            subprocess.run(
-                ["osascript", "-e", applescript, jsx_path],
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=3600,
-            )
+            execute_ae_script_file(jsx_path)
             verify_jsx_status(jsx_path)
             msg = (
                 f"Queued {len(unslate_jobs)} un-slated spot(s) in Adobe Media Encoder!\n\n"
@@ -4077,6 +4291,9 @@ class SuperJoyWorkstation:
                 vf for vf in os.listdir(videos_dir) if vf.lower().endswith(VALID_EXTS) and not vf.startswith(".")
             )
 
+        previews_dir = os.path.join(output_dir, "_previews")
+        os.makedirs(previews_dir, exist_ok=True)
+
         for raw_data in batch_data:
             data = normalize_slate_row(raw_data)
             ad_id = data.get("id", data.get("ad-id", ""))
@@ -4111,6 +4328,7 @@ class SuperJoyWorkstation:
                 )
                 slated_prores_file = os.path.join(row_folders["slated_prores"], f"{out_stem}.mov")
                 slated_h264_file = ""
+                preview_png_file = os.path.join(previews_dir, f"{out_stem}_preview.png")
                 job_entry = {
                     "video_path": "",
                     "slate_only": True,
@@ -4119,6 +4337,7 @@ class SuperJoyWorkstation:
                     "slated_h264_output": slated_h264_file,
                     "unslated_prores_output": "",
                     "unslated_h264_output": "",
+                    "preview_png": preview_png_file,
                     "flame": flame_flag,
                     "text_data": data,
                     "aspect": asp,
@@ -4167,6 +4386,7 @@ class SuperJoyWorkstation:
             unslated_h264_file = (
                 os.path.join(row_folders["unslated_h264"], f"{clean_stem}.mp4") if auto_transcode else ""
             )
+            preview_png_file = os.path.join(previews_dir, f"{out_stem}_preview.png")
 
             job_entry = {
                 "video_path": matched_video,
@@ -4176,6 +4396,7 @@ class SuperJoyWorkstation:
                 "slated_h264_output": slated_h264_file,
                 "unslated_prores_output": unslated_prores_file,
                 "unslated_h264_output": unslated_h264_file,
+                "preview_png": preview_png_file,
                 "clean_stem": clean_stem,
                 "flame": flame_flag,
                 "text_data": data,
@@ -4215,27 +4436,26 @@ class SuperJoyWorkstation:
         if not slates_only:
             ensure_ame_running()
         clear_jsx_status(jsx_path)
-        ae_target = resolve_ae_applescript_target()
-        applescript = f'''
-        on run argv
-            set jsxPath to POSIX file (item 1 of argv)
-            tell {ae_target}
-                activate
-                DoScriptFile jsxPath
-            end tell
-        end run
-        '''
 
         try:
-            ensure_ae_script_permissions()
-            subprocess.run(
-                ["osascript", "-e", applescript, jsx_path],
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=3600,
-            )
+            execute_ae_script_file(jsx_path)
             status_info = verify_jsx_status(jsx_path)
+
+            # Store preview metadata for in-app preview viewer
+            created_previews = []
+            for j in ae_jobs:
+                ppath = j.get("preview_png")
+                if ppath and os.path.isfile(ppath):
+                    created_previews.append({
+                        "id": j.get("text_data", {}).get("id") or j.get("text_data", {}).get("ad-id", ""),
+                        "aspect": j.get("aspect", ""),
+                        "title": j.get("text_data", {}).get("title") or j.get("text_data", {}).get("name", ""),
+                        "image_path": ppath,
+                    })
+            if created_previews:
+                self.latest_previews = created_previews
+                self.root.after(200, self.open_preview_viewer)
+
             mode_desc = "Standalone Slates Project" if slates_only else "Master Slated + Unslated Project"
             folder_summary = (
                 f"• {folders['slated_prores']}"
@@ -4799,6 +5019,13 @@ open "{primary_target}"
 
             if (slateComp) {{
                 populateSlateComp(slateComp, job, solidComps);
+                if (job.preview_png) {{
+                    try {{
+                        var prevF = new File(job.preview_png);
+                        slateComp.saveFrameToPng(0, prevF);
+                        $.sleep(300);
+                    }} catch (eSnap) {{}}
+                }}
             }}
 
             // Standalone Slate Only mode: queue the populated slateComp to ProRes (.mov)
