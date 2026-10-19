@@ -2223,12 +2223,20 @@ class SuperJoyWorkstation:
         csv_bar.pack(fill="x", pady=(0, 8))
         mkbtn(
             csv_bar,
+            text="New Spreadsheet Template",
+            bg=ACCENT_RED,
+            command=self.create_copy_of_template_spreadsheet,
+            padx=14,
+            pady=6,
+        ).pack(side="left")
+        mkbtn(
+            csv_bar,
             text="Load Spreadsheet into Batch Slate Builder",
             bg=BG_BLUE,
             command=lambda: self.load_csv_into_batch_builder(switch_to_builder=True),
             padx=14,
             pady=6,
-        ).pack(side="left")
+        ).pack(side="left", padx=(8, 0))
         mkbtn(
             csv_bar,
             text="Rename Master Video Files from Spreadsheet",
@@ -2377,12 +2385,20 @@ class SuperJoyWorkstation:
         bar.pack(fill="x", pady=(2, 3))
         mkbtn(
             bar,
+            text="New Spreadsheet",
+            bg=ACCENT_RED,
+            command=self.create_copy_of_template_spreadsheet,
+            padx=9,
+            pady=5,
+        ).pack(side="left")
+        mkbtn(
+            bar,
             text="Auto-Pull Videos",
             bg=BG_BLUE,
             command=lambda: self.populate_batch_from_videos(notify_if_empty=True),
             padx=9,
             pady=5,
-        ).pack(side="left")
+        ).pack(side="left", padx=(5, 0))
         mkbtn(
             bar,
             text="Import .XLSX / CSV",
@@ -2778,6 +2794,65 @@ class SuperJoyWorkstation:
             "• Un-slated Comps: Clean master video exported starting at 01:00:00:00.\n"
             "• All slates use system-local Avenir Next typography."
         )
+
+    def create_copy_of_template_spreadsheet(self):
+        """Prompt user to save a new copy of the bundled spreadsheet template (.xlsx) and reveal/open it."""
+        reset_tk_mouse_state(self.root)
+        candidates = [
+            DEFAULT_SPREADSHEET_XLSX,
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "Slates From Spreadsheet_Template_001.xlsx"),
+            os.path.join(_APP_DIR, "Slates From Spreadsheet_Template_001.xlsx"),
+            os.path.join(os.path.dirname(sys.executable), "Slates From Spreadsheet_Template_001.xlsx"),
+        ]
+        src_template = None
+        for c in candidates:
+            if c and os.path.isfile(c):
+                src_template = c
+                break
+
+        if not src_template:
+            self._alert("showerror", "Template Not Found", "Could not locate the bundled 'Slates From Spreadsheet_Template_001.xlsx' template.")
+            return
+
+        init_dir = (
+            resolve_path_input(self.tsv_path.get())
+            or resolve_path_input(self.output_dir.get())
+            or resolve_path_input(self.videos_dir.get())
+            or os.path.expanduser("~/Documents")
+        )
+        if init_dir and os.path.isfile(init_dir):
+            init_dir = os.path.dirname(init_dir)
+
+        default_name = f"Slates From Spreadsheet_{today_yyyy_mm_dd()}.xlsx"
+        save_dest = filedialog.asksaveasfilename(
+            parent=self.root,
+            title="Save New Copy of Spreadsheet Template",
+            initialdir=init_dir,
+            initialfile=default_name,
+            defaultextension=".xlsx",
+            filetypes=[("Excel Workbook (*.xlsx)", "*.xlsx"), ("All Files", "*.*")],
+        )
+        wake_macos_window(self.root)
+        if not save_dest:
+            return
+
+        try:
+            shutil.copyfile(src_template, save_dest)
+            self.tsv_path.set(save_dest)
+            # Reveal the new copy in Finder and open it in Excel / Numbers
+            try:
+                subprocess.Popen(["open", "-R", save_dest])
+                subprocess.Popen(["open", save_dest])
+            except Exception:
+                pass
+            self._alert(
+                "showinfo",
+                "New Template Created",
+                f"Created new spreadsheet template copy at:\n{save_dest}\n\n"
+                "The file has been linked in your app and opened in your spreadsheet application."
+            )
+        except Exception as e:
+            self._alert("showerror", "Save Error", f"Failed to save copy of spreadsheet template:\n{e}")
 
     def open_preview_viewer(self):
         """Open the static slate preview gallery viewer."""
