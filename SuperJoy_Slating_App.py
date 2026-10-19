@@ -3801,25 +3801,32 @@ class SuperJoyWorkstation:
             var compW = vidItem.width > 0 ? vidItem.width : (slateItem.width > 0 ? slateItem.width : cfg.width);
             var compH = vidItem.height > 0 ? vidItem.height : (slateItem.height > 0 ? slateItem.height : cfg.height);
             var compFps = vidItem.frameRate > 0 ? vidItem.frameRate : (slateItem.frameRate > 0 ? slateItem.frameRate : cfg.fps);
-            var totalDuration = 7.0 + vidItem.duration;
+            var nominalFps = Math.round(compFps);
+            var slateFrames = Math.round(5.0 * nominalFps);
+            var headFrames = Math.round(7.0 * nominalFps);
+            var slateDuration = slateFrames / compFps;
+            var headDuration = headFrames / compFps;
+            var blackDuration = (headFrames - slateFrames) / compFps;
+            var totalDuration = headDuration + vidItem.duration;
 
             var masterComp = app.project.items.addComp(job.comp_name, compW, compH, 1.0, totalDuration, compFps);
             masterComp.parentFolder = masterFolder;
             setCompStartTimecode(masterComp, "00:59:53:00");
 
-            var blackSolid = masterComp.layers.addSolid([0,0,0], "2s_Black", compW, compH, 1.0, 2.0);
-            blackSolid.startTime = 5.0;
+            var blackSolid = masterComp.layers.addSolid([0,0,0], "2s_Black", compW, compH, 1.0, blackDuration);
+            blackSolid.startTime = slateDuration;
+            blackSolid.outPoint = headDuration;
 
             var slateLayer = masterComp.layers.add(slateItem);
             slateLayer.startTime = 0.0;
-            if (slateItem.duration && slateItem.duration >= 5.0 + masterComp.frameDuration) {{
-                slateLayer.outPoint = Math.min(7.0, slateItem.duration);
+            if (slateItem.duration && slateItem.duration >= slateDuration + masterComp.frameDuration) {{
+                slateLayer.outPoint = Math.min(headDuration, slateItem.duration);
             }} else {{
-                slateLayer.outPoint = 5.0;
+                slateLayer.outPoint = slateDuration;
                 if (beepItem) {{
                     var beepLayer = masterComp.layers.add(beepItem);
-                    beepLayer.startTime = 5.0;
-                    beepLayer.outPoint = 5.0 + masterComp.frameDuration;
+                    beepLayer.startTime = slateDuration;
+                    beepLayer.outPoint = slateDuration + masterComp.frameDuration;
                 }}
             }}
 
@@ -3831,7 +3838,7 @@ class SuperJoyWorkstation:
             }}
 
             var vidLayer = masterComp.layers.add(vidItem);
-            vidLayer.startTime = 7.0;
+            vidLayer.startTime = headDuration;
             vidLayer.property("Scale").setValue([100, 100]);
 
             queueProResAndH264(
@@ -4159,22 +4166,26 @@ class SuperJoyWorkstation:
             var vidItem = app.project.importFile(ioVid);
             vidItem.parentFolder = sourceFolder;
 
-            if (vidItem.duration <= trimSeconds) {{
-                skipped.push(vidItem.name + " (duration " + vidItem.duration.toFixed(2) + "s <= " + trimSeconds + "s trim)");
-                continue;
-            }}
-
             var compW = vidItem.width > 0 ? vidItem.width : cfg.width;
             var compH = vidItem.height > 0 ? vidItem.height : cfg.height;
             var compFps = vidItem.frameRate > 0 ? vidItem.frameRate : cfg.fps;
-            var cleanDuration = vidItem.duration - trimSeconds;
+            var nominalFps = Math.round(compFps);
+            var headFrames = Math.round(trimSeconds * nominalFps);
+            var headDuration = headFrames / compFps;
+
+            if (vidItem.duration <= headDuration) {{
+                skipped.push(vidItem.name + " (duration " + vidItem.duration.toFixed(2) + "s <= " + headDuration.toFixed(3) + "s head trim)");
+                continue;
+            }}
+
+            var cleanDuration = vidItem.duration - headDuration;
 
             var comp = app.project.items.addComp(job.comp_name, compW, compH, 1.0, cleanDuration, compFps);
             comp.parentFolder = rootFolder;
             setCompStartTimecode(comp, "01:00:00:00");
 
             var vidLayer = comp.layers.add(vidItem);
-            vidLayer.startTime = -trimSeconds;
+            vidLayer.startTime = -headDuration;
             vidLayer.inPoint = 0.0;
             vidLayer.outPoint = cleanDuration;
             vidLayer.property("Scale").setValue([100, 100]);
@@ -5124,25 +5135,33 @@ open "{primary_target}"
             var compW = (vidItem.width > 0) ? vidItem.width : (job.width ? job.width : cfg.width);
             var compH = (vidItem.height > 0) ? vidItem.height : (job.height ? job.height : cfg.height);
             var compFps = vidItem.frameRate > 0 ? vidItem.frameRate : cfg.fps;
-            var totalDuration = 7.0 + vidItem.duration;
+            var nominalFps = Math.round(compFps);
+            var slateFrames = Math.round(5.0 * nominalFps);
+            var headFrames = Math.round(7.0 * nominalFps);
+            var slateDuration = slateFrames / compFps;
+            var headDuration = headFrames / compFps;
+            var blackDuration = (headFrames - slateFrames) / compFps;
+            var totalDuration = headDuration + vidItem.duration;
+
             var compName = job.aspect ? (slateId + "_" + job.aspect + "_SLATED") : (slateId + "_SLATED");
             var masterComp = app.project.items.addComp(compName, compW, compH, 1.0, totalDuration, compFps);
             masterComp.parentFolder = masterFolder;
             setCompStartTimecode(masterComp, "00:59:53:00");
 
-            var blackSolid = masterComp.layers.addSolid([0,0,0], "2s_Black", compW, compH, 1.0, 2.0);
-            blackSolid.startTime = 5.0;
+            var blackSolid = masterComp.layers.addSolid([0,0,0], "2s_Black", compW, compH, 1.0, blackDuration);
+            blackSolid.startTime = slateDuration;
+            blackSolid.outPoint = headDuration;
 
             var slateLayer = masterComp.layers.add(slateComp);
             slateLayer.startTime = 0;
             if (usingAepTemplate) {{
-                slateLayer.outPoint = 5.0 + masterComp.frameDuration;
+                slateLayer.outPoint = slateDuration + masterComp.frameDuration;
             }} else {{
-                slateLayer.outPoint = 5.0;
+                slateLayer.outPoint = slateDuration;
                 if (beepItem) {{
                     var beepLayer = masterComp.layers.add(beepItem);
-                    beepLayer.startTime = 5.0;
-                    beepLayer.outPoint = 5.0 + masterComp.frameDuration;
+                    beepLayer.startTime = slateDuration;
+                    beepLayer.outPoint = slateDuration + masterComp.frameDuration;
                 }}
             }}
 
@@ -5155,7 +5174,7 @@ open "{primary_target}"
 
             // Master Video is ALWAYS rendered native 100% scale without letterbox or crop
             var vidLayer = masterComp.layers.add(vidItem);
-            vidLayer.startTime = 7.0;
+            vidLayer.startTime = headDuration;
             vidLayer.property("Scale").setValue([100, 100]);
 
             // Queue Slated Master to SLATED/ProRes (.mov 422 HQ) and SLATED/h264 (.mp4 25Mbps)
