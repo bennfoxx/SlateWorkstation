@@ -427,7 +427,8 @@ def ensure_ame_running(wait_seconds=75):
         apps = sorted(glob.glob("/Applications/Adobe Media Encoder */Adobe Media Encoder *.app"), reverse=True)
         if not apps:
             return False
-        subprocess.run(["open", "-g", apps[0]], check=False)
+        # Do NOT pass '-g' — launching AME with '-g' suppresses its main Queue window and Dynamic Link receiver
+        subprocess.run(["open", apps[0]], check=False)
         for _ in range(wait_seconds):
             if running():
                 time.sleep(15)  # let the Dynamic Link server finish starting
@@ -442,12 +443,22 @@ def wrap_jsx_with_status(jsx_body, status_path):
     """Wrap a generated JSX so any error is caught and a status file is always written
     (osascript returns success even when After Effects throws, so Python reads this file)."""
     return (
-        "var __SJ_STATUS = {ok: false, queued: false, rqItems: 0, error: \"\"};\n"
+        "var __SJ_STATUS = {ok: false, queued: false, rendered: false, rqItems: 0, error: \"\"};\n"
+        "function __sjErrText(e) {\n"
+        "  if (!e) return 'Unknown error';\n"
+        "  try { if (typeof e === 'string') return e; } catch (e0) {}\n"
+        "  try { if (e.message) return e.message + (e.line ? ' (line ' + e.line + ')' : ''); } catch (e1) {}\n"
+        "  try { if (e.description) return e.description; } catch (e2) {}\n"
+        "  try { if (e.toString) return e.toString(); } catch (e3) {}\n"
+        "  return 'After Effects script error';\n"
+        "}\n"
         "function __sjWriteStatus() {\n"
         "  try {\n"
         "    var f = new File(" + json.dumps(status_path) + "); f.encoding = 'UTF-8'; f.open('w');\n"
+        "    var errClean = (__SJ_STATUS.error ? __sjErrText(__SJ_STATUS.error) : '').replace(/[\\r\\n]+/g, ' ');\n"
         "    f.write('ok=' + (__SJ_STATUS.ok ? 1 : 0) + '\\nqueued=' + (__SJ_STATUS.queued ? 1 : 0)"
-        " + '\\nrq_items=' + __SJ_STATUS.rqItems + '\\nerror=' + String(__SJ_STATUS.error).replace(/[\\r\\n]+/g, ' ') + '\\n');\n"
+        " + '\\nrendered=' + (__SJ_STATUS.rendered ? 1 : 0)"
+        " + '\\nrq_items=' + __SJ_STATUS.rqItems + '\\nerror=' + errClean + '\\n');\n"
         "    f.close();\n"
         "  } catch (eW) {}\n"
         "}\n"
@@ -462,7 +473,7 @@ def wrap_jsx_with_status(jsx_body, status_path):
         "try {\n" + jsx_body + "\n"
         "  if (!__SJ_STATUS.error) { __SJ_STATUS.ok = true; }\n"
         "} catch (eMain) {\n"
-        "  __SJ_STATUS.error = String(eMain) + (eMain.line ? ' (script line ' + eMain.line + ')' : '');\n"
+        "  __SJ_STATUS.error = __sjErrText(eMain);\n"
         "  try { app.endUndoGroup(); } catch (eU) {}\n"
         "}\n"
         "try { app.endSuppressDialogs(false); } catch (eSE) {}\n"
@@ -478,7 +489,7 @@ def clear_jsx_status(jsx_path):
 
 
 def verify_jsx_status(jsx_path, expect_queue=True):
-    """Raise RuntimeError unless the After Effects script reported success and queued items in AME."""
+    """Raise RuntimeError unless the After Effects script reported success and queued/rendered items."""
     sp = jsx_path + ".status"
     if not os.path.isfile(sp):
         raise RuntimeError("After Effects did not finish the script (no status reported). Check for open dialogs in After Effects.")
@@ -490,8 +501,11 @@ def verify_jsx_status(jsx_path, expect_queue=True):
                 info[k] = v
     if info.get("ok") != "1" or info.get("error"):
         raise RuntimeError(info.get("error") or "After Effects script failed.")
-    if expect_queue and (info.get("queued") != "1" or int(info.get("rq_items", "0") or 0) == 0):
-        raise RuntimeError("Nothing was queued in Adobe Media Encoder (render queue empty or AME unreachable).")
+    if expect_queue and (
+        (info.get("queued") != "1" and info.get("rendered") != "1")
+        or int(info.get("rq_items", "0") or 0) == 0
+    ):
+        raise RuntimeError("Nothing was rendered or queued in Adobe Media Encoder (render queue empty or AME unreachable).")
     return info
 
 
@@ -538,8 +552,22 @@ def ensure_ae_script_permissions():
         f.write(data.replace(off, on))
 
 
+def resolve_path_input(raw_path):
+    """Resolve a user-supplied file or folder path, preserving trailing spaces if that exact path exists on disk."""
+    if not raw_path:
+        return ""
+    expanded = os.path.expanduser(str(raw_path).strip("\r\n\t"))
+    if os.path.exists(expanded):
+        return expanded
+    stripped = expanded.strip()
+    if stripped and os.path.exists(stripped):
+        return stripped
+    return stripped or expanded
+
+
 def create_flat_slate_folder(out_dir):
     """Standalone slates: a single flat output folder (.mov only, no ProRes/h264 subfolders)."""
+    out_dir = resolve_path_input(out_dir)
     os.makedirs(out_dir, exist_ok=True)
     return {
         "base": out_dir,
@@ -554,7 +582,8 @@ def create_flat_slate_folder(out_dir):
 def ensure_ame_presets(presets_dir):
     """Ensure the two exact Adobe Media Encoder (.epr) preset files exist in `presets_dir`:
     1. ProRes Master (.mov): Apple ProRes 422 HQ, Match Source resolution & frame rate
-    2. MP4 (.mp4): H.264, Match Source resolution & frame rate, 25 Mbps target bitrate"""
+    2. MP4 (.mp4): H.264, Match Source resolution & frame rate, 25 Mbps target bitrate
+    Also resolves the bundled After Effects OutputModule seed project."""
     os.makedirs(presets_dir, exist_ok=True)
     prores_dst = os.path.join(presets_dir, "SuperJoy_Apple_ProRes_422_HQ_MatchSource.epr")
     h264_dst = os.path.join(presets_dir, "SuperJoy_H264_MatchSource_25Mbps.epr")
@@ -562,6 +591,7 @@ def ensure_ame_presets(presets_dir):
     bundled_presets_dir = os.path.join(_APP_DIR, "presets")
     bundled_prores = os.path.join(bundled_presets_dir, "SuperJoy_Apple_ProRes_422_HQ_MatchSource.epr")
     bundled_h264 = os.path.join(bundled_presets_dir, "SuperJoy_H264_MatchSource_25Mbps.epr")
+    bundled_seed_aep = os.path.join(bundled_presets_dir, "SuperJoy_AE_OutputTemplates_Seed.aep")
 
     # 1. Resolve Apple ProRes 422 HQ (Match Source)
     if os.path.isfile(bundled_prores):
@@ -613,7 +643,9 @@ def ensure_ame_presets(presets_dir):
     return {
         "prores_epr": prores_dst if os.path.isfile(prores_dst) else "",
         "h264_epr": h264_dst if os.path.isfile(h264_dst) else "",
+        "ae_seed_aep": bundled_seed_aep if os.path.isfile(bundled_seed_aep) else "",
     }
+
 
 
 def parse_video_filename(filename):
@@ -3147,7 +3179,7 @@ class SuperJoyWorkstation:
         )
 
     def process_marry(self, pairs, slates_dir, videos_dir, settings):
-        custom_out = self.output_dir.get().strip()
+        custom_out = resolve_path_input(self.output_dir.get())
         output_dir = custom_out if custom_out else os.path.join(videos_dir, "MARRIED_DELIVERY")
         auto_transcode = bool(self.auto_transcode_var.get())
         folders = create_delivery_folders(output_dir, include_slated=True, include_unslated=auto_transcode)
@@ -3156,6 +3188,7 @@ class SuperJoyWorkstation:
         settings = dict(settings or {})
         settings["prores_epr"] = presets.get("prores_epr", "")
         settings["h264_epr"] = presets.get("h264_epr", "")
+        settings["ae_seed_aep"] = presets.get("ae_seed_aep", "")
         settings["auto_transcode"] = auto_transcode
 
         aep_marry_path = os.path.join(output_dir, "SuperJoy_Married_Slates.aep")
@@ -3267,6 +3300,38 @@ class SuperJoyWorkstation:
         var cfg = {settings_json};
         var beepFile = new File({json.dumps(beep_path)});
 
+        function ensureSuperJoyOutputTemplates(seedAepPath) {{
+            try {{
+                if (!seedAepPath) return;
+                var seedFile = new File(seedAepPath);
+                if (!seedFile.exists) return;
+                if (app.project) app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+                app.newProject();
+                var tc = app.project.items.addComp("_tpl_check", 1920, 1080, 1.0, 1.0, 24.0);
+                var trq = app.project.renderQueue.items.add(tc);
+                var tpls = trq.outputModule(1).templates;
+                var hasProRes = false, hasH264 = false;
+                for (var t = 0; t < tpls.length; t++) {{
+                    if (String(tpls[t]) === "Apple ProRes 422 HQ") hasProRes = true;
+                    if (String(tpls[t]) === "SuperJoy H.264 25 Mbps") hasH264 = true;
+                }}
+                app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+                if (!hasProRes || !hasH264) {{
+                    app.open(seedFile);
+                    if (!hasProRes && app.project.renderQueue.numItems >= 1) {{
+                        try {{ app.project.renderQueue.item(1).outputModule(1).setSettings({{"Output File Info": {{"Subfolder Path": ""}}}}); }} catch (eS1) {{}}
+                        app.project.renderQueue.item(1).outputModule(1).saveAsTemplate("Apple ProRes 422 HQ");
+                    }}
+                    if (!hasH264 && app.project.renderQueue.numItems >= 2) {{
+                        try {{ app.project.renderQueue.item(2).outputModule(1).setSettings({{"Output File Info": {{"Subfolder Path": ""}}}}); }} catch (eS2) {{}}
+                        app.project.renderQueue.item(2).outputModule(1).saveAsTemplate("SuperJoy H.264 25 Mbps");
+                    }}
+                    app.preferences.saveToDisk();
+                    app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+                }}
+            }} catch (eSeed) {{}}
+        }}
+
         function applyOutputTemplateSafe(outMod, preferredNames) {{
             try {{
                 var tpls = outMod.templates;
@@ -3289,7 +3354,7 @@ class SuperJoyWorkstation:
                 var omPro = rqPro.outputModule(1);
                 applyOutputTemplateSafe(omPro, ["Apple ProRes 422 HQ", "High Quality", "Lossless"]);
                 try {{
-                    omPro.setSettings({{"Output Audio": "On"}});
+                    omPro.setSettings({{"Output Audio": "On", "Output File Info": {{"Subfolder Path": ""}}}});
                 }} catch (eAudP) {{}}
                 omPro.file = new File(proresPath);
             }}
@@ -3297,12 +3362,13 @@ class SuperJoyWorkstation:
                 var rqMp4 = app.project.renderQueue.items.add(comp);
                 var omMp4 = rqMp4.outputModule(1);
                 applyOutputTemplateSafe(omMp4, [
+                    "SuperJoy H.264 25 Mbps",
                     "H.264 - Match Render Settings - 25 Mbps",
                     "H.264 - Match Render Settings - 40 Mbps",
                     "H.264 - Match Render Settings - 15 Mbps"
                 ]);
                 try {{
-                    omMp4.setSettings({{"Output Audio": "On"}});
+                    omMp4.setSettings({{"Output Audio": "On", "Output File Info": {{"Subfolder Path": ""}}}});
                 }} catch (eAudM) {{}}
                 omMp4.file = new File(h264Path);
             }}
@@ -3313,6 +3379,8 @@ class SuperJoyWorkstation:
                 app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
             }}
         }} catch (eClose) {{}}
+
+        ensureSuperJoyOutputTemplates(cfg.ae_seed_aep || "");
 
         app.newProject();
         app.beginUndoGroup("Batch Marry Existing Slates + Videos");
@@ -3393,6 +3461,8 @@ class SuperJoyWorkstation:
             }}
         }}
 
+        app.endUndoGroup();
+
         var aepFile = new File({json.dumps(aep_path)});
         app.project.save(aepFile);
         var queued = false, lastErr = "";
@@ -3403,15 +3473,13 @@ class SuperJoyWorkstation:
                 queued = true;
                 __SJ_STATUS.queued = true;
             }} catch (eQ) {{
-                lastErr = String(eQ);
+                lastErr = __sjErrText(eQ);
                 $.sleep(5000);
             }}
         }}
         if (!queued) {{
             __SJ_STATUS.error = "Could not queue in Adobe Media Encoder: " + lastErr;
-            alert("Could not reach Adobe Media Encoder (" + lastErr + ").\\n\\nThe project is saved with the render queue intact. Make sure Media Encoder is open and not frozen (quit and relaunch it if needed), then in After Effects click 'Queue in AME' in the Render Queue panel.");
         }}
-        app.endUndoGroup();
         """
         with open(path, "w", encoding="utf-8") as f:
             f.write(wrap_jsx_with_status(jsx_code, path + ".status"))
@@ -3430,7 +3498,7 @@ class SuperJoyWorkstation:
         self.render_settings = {"fps": fps, "width": width, "height": height}
 
         if tab == 2:
-            folder = self.unslate_dir.get().strip()
+            folder = resolve_path_input(self.unslate_dir.get())
             if not folder or not os.path.isdir(folder):
                 self._alert("showerror", "Error", "Please select a folder of slated videos.")
                 return
@@ -3441,8 +3509,8 @@ class SuperJoyWorkstation:
             return
 
         if tab == 3:
-            sdir = self.marry_slates_dir.get().strip()
-            vdir = self.videos_dir.get().strip()
+            sdir = resolve_path_input(self.marry_slates_dir.get())
+            vdir = resolve_path_input(self.videos_dir.get())
             if not sdir or not os.path.isdir(sdir):
                 self._alert("showerror", "Error", "Please select your Existing Slates folder.")
                 return
@@ -3459,8 +3527,8 @@ class SuperJoyWorkstation:
             ).start()
             return
 
-        template_dir = self.template_dir.get().strip()
-        videos_dir = self.videos_dir.get().strip()
+        template_dir = resolve_path_input(self.template_dir.get())
+        videos_dir = resolve_path_input(self.videos_dir.get())
         slates_only = self.output_mode_var.get() == "slates_only"
 
         if not template_dir:
@@ -3476,7 +3544,7 @@ class SuperJoyWorkstation:
 
         batch_jobs_data = []
         if tab == 0:
-            tsv = self.tsv_path.get().strip()
+            tsv = resolve_path_input(self.tsv_path.get())
             if not tsv:
                 self._alert("showerror", "Error", "Please select a spreadsheet / metadata file.")
                 return
@@ -3513,7 +3581,7 @@ class SuperJoyWorkstation:
     # ------------------------------------------------------------------
     def process_unslate(self, folder, settings=None):
         settings = dict(settings or getattr(self, "render_settings", {"fps": DEFAULT_FPS, "width": 1920, "height": 1080}))
-        custom_out = self.output_dir.get().strip()
+        custom_out = resolve_path_input(self.output_dir.get())
         base_out = custom_out if custom_out else folder
         auto_transcode = bool(self.auto_transcode_var.get())
 
@@ -3521,6 +3589,7 @@ class SuperJoyWorkstation:
         presets = ensure_ame_presets(folders["presets_dir"])
         settings["prores_epr"] = presets.get("prores_epr", "")
         settings["h264_epr"] = presets.get("h264_epr", "")
+        settings["ae_seed_aep"] = presets.get("ae_seed_aep", "")
         settings["auto_transcode"] = auto_transcode
 
         out_dir = folders["unslated_root"]
@@ -3631,6 +3700,38 @@ class SuperJoyWorkstation:
         var cfg = {settings_json};
         var trimSeconds = {trim_sec};
 
+        function ensureSuperJoyOutputTemplates(seedAepPath) {{
+            try {{
+                if (!seedAepPath) return;
+                var seedFile = new File(seedAepPath);
+                if (!seedFile.exists) return;
+                if (app.project) app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+                app.newProject();
+                var tc = app.project.items.addComp("_tpl_check", 1920, 1080, 1.0, 1.0, 24.0);
+                var trq = app.project.renderQueue.items.add(tc);
+                var tpls = trq.outputModule(1).templates;
+                var hasProRes = false, hasH264 = false;
+                for (var t = 0; t < tpls.length; t++) {{
+                    if (String(tpls[t]) === "Apple ProRes 422 HQ") hasProRes = true;
+                    if (String(tpls[t]) === "SuperJoy H.264 25 Mbps") hasH264 = true;
+                }}
+                app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+                if (!hasProRes || !hasH264) {{
+                    app.open(seedFile);
+                    if (!hasProRes && app.project.renderQueue.numItems >= 1) {{
+                        try {{ app.project.renderQueue.item(1).outputModule(1).setSettings({{"Output File Info": {{"Subfolder Path": ""}}}}); }} catch (eS1) {{}}
+                        app.project.renderQueue.item(1).outputModule(1).saveAsTemplate("Apple ProRes 422 HQ");
+                    }}
+                    if (!hasH264 && app.project.renderQueue.numItems >= 2) {{
+                        try {{ app.project.renderQueue.item(2).outputModule(1).setSettings({{"Output File Info": {{"Subfolder Path": ""}}}}); }} catch (eS2) {{}}
+                        app.project.renderQueue.item(2).outputModule(1).saveAsTemplate("SuperJoy H.264 25 Mbps");
+                    }}
+                    app.preferences.saveToDisk();
+                    app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+                }}
+            }} catch (eSeed) {{}}
+        }}
+
         function applyOutputTemplateSafe(outMod, preferredNames) {{
             try {{
                 var tpls = outMod.templates;
@@ -3652,6 +3753,8 @@ class SuperJoyWorkstation:
                 app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
             }}
         }} catch (eClose) {{}}
+
+        ensureSuperJoyOutputTemplates(cfg.ae_seed_aep || "");
 
         app.newProject();
         app.beginUndoGroup("Batch Un-Slate (7.0s Head Trim)");
@@ -3699,7 +3802,7 @@ class SuperJoyWorkstation:
                 var outMod = rqItem.outputModule(1);
                 applyOutputTemplateSafe(outMod, ["Apple ProRes 422 HQ", "High Quality", "Lossless"]);
                 try {{
-                    outMod.setSettings({{"Output Audio": "On"}});
+                    outMod.setSettings({{"Output Audio": "On", "Output File Info": {{"Subfolder Path": ""}}}});
                 }} catch (eAudP) {{}}
                 outMod.file = new File(proresTarget);
             }}
@@ -3707,16 +3810,19 @@ class SuperJoyWorkstation:
                 var rqMp4 = app.project.renderQueue.items.add(comp);
                 var outMp4 = rqMp4.outputModule(1);
                 applyOutputTemplateSafe(outMp4, [
+                    "SuperJoy H.264 25 Mbps",
                     "H.264 - Match Render Settings - 25 Mbps",
                     "H.264 - Match Render Settings - 40 Mbps",
                     "H.264 - Match Render Settings - 15 Mbps"
                 ]);
                 try {{
-                    outMp4.setSettings({{"Output Audio": "On"}});
+                    outMp4.setSettings({{"Output Audio": "On", "Output File Info": {{"Subfolder Path": ""}}}});
                 }} catch (eAudM) {{}}
                 outMp4.file = new File(job.h264_output);
             }}
         }}
+
+        app.endUndoGroup();
 
         if (skipped.length) {{
             alert("Skipped during Un-Slate:\\n" + skipped.join("\\n"));
@@ -3732,15 +3838,13 @@ class SuperJoyWorkstation:
                 queued = true;
                 __SJ_STATUS.queued = true;
             }} catch (eQ) {{
-                lastErr = String(eQ);
+                lastErr = __sjErrText(eQ);
                 $.sleep(5000);
             }}
         }}
         if (!queued) {{
             __SJ_STATUS.error = "Could not queue in Adobe Media Encoder: " + lastErr;
-            alert("Could not reach Adobe Media Encoder (" + lastErr + ").\\n\\nThe project is saved with the render queue intact. Make sure Media Encoder is open and not frozen (quit and relaunch it if needed), then in After Effects click 'Queue in AME' in the Render Queue panel.");
         }}
-        app.endUndoGroup();
         """
         with open(path, "w", encoding="utf-8") as f:
             f.write(wrap_jsx_with_status(jsx_code, path + ".status"))
@@ -3763,16 +3867,17 @@ class SuperJoyWorkstation:
             return
 
         # Determine default parent folder when global Output Folder is not explicitly set
+        tsv_resolved = resolve_path_input(self.tsv_path.get())
         if videos_dir and os.path.isdir(videos_dir):
             base_out_parent = videos_dir
-        elif self.tsv_path.get().strip() and os.path.isfile(self.tsv_path.get().strip()):
-            base_out_parent = os.path.dirname(self.tsv_path.get().strip())
+        elif tsv_resolved and os.path.isfile(tsv_resolved):
+            base_out_parent = os.path.dirname(tsv_resolved)
         elif os.path.isfile(template_dir):
             base_out_parent = os.path.dirname(template_dir)
         else:
             base_out_parent = template_dir
 
-        custom_global_out = self.output_dir.get().strip()
+        custom_global_out = resolve_path_input(self.output_dir.get())
         if custom_global_out:
             output_dir = custom_global_out
         else:
@@ -3794,7 +3899,9 @@ class SuperJoyWorkstation:
         render_cfg = dict(getattr(self, "render_settings", {"fps": DEFAULT_FPS, "width": 1920, "height": 1080}))
         render_cfg["prores_epr"] = presets.get("prores_epr", "")
         render_cfg["h264_epr"] = presets.get("h264_epr", "")
+        render_cfg["ae_seed_aep"] = presets.get("ae_seed_aep", "")
         render_cfg["auto_transcode"] = auto_transcode
+        render_cfg["slates_only"] = bool(slates_only)
 
         log_path = os.path.join(output_dir, "Slating_Results_Log.txt")
         aep_master_path = os.path.join(
@@ -3849,7 +3956,7 @@ class SuperJoyWorkstation:
             multi_aspect = id_counts.get(ad_id.lower(), 0) > 1
 
             # Support per-slate Output Folder override in addition to batch/global Output Folder
-            row_out_override = (data.get("output_dir") or "").strip()
+            row_out_override = resolve_path_input(data.get("output_dir") or "")
             if row_out_override and slates_only:
                 row_folders = create_flat_slate_folder(row_out_override)
             elif row_out_override:
@@ -3970,7 +4077,8 @@ class SuperJoyWorkstation:
         jsx_path = os.path.join(output_dir, "_temp_ae_build.jsx")
         self.write_jsx(jsx_path, ae_jobs, aep_master_path, beep_path, render_cfg, templates)
 
-        ensure_ame_running()
+        if not slates_only:
+            ensure_ame_running()
         clear_jsx_status(jsx_path)
         ae_target = resolve_ae_applescript_target()
         applescript = f'''
@@ -3992,15 +4100,20 @@ class SuperJoyWorkstation:
                 text=True,
                 timeout=3600,
             )
-            verify_jsx_status(jsx_path)
+            status_info = verify_jsx_status(jsx_path)
             mode_desc = "Standalone Slates Project" if slates_only else "Master Slated + Unslated Project"
             folder_summary = (
                 f"• {folders['slated_prores']}"
                 if slates_only
                 else f"• {folders['slated_prores']}\n• {folders['slated_h264']}\n• {folders['unslated_prores']}\n• {folders['unslated_h264']}"
             )
+            action_desc = (
+                "rendered ProRes 422 HQ .mov files"
+                if status_info.get("rendered") == "1"
+                else "queued in AME"
+            )
             msg = (
-                f"Successfully generated {mode_desc} ({success_count} spot(s)) and queued in AME!\n\n"
+                f"Successfully generated {mode_desc} ({success_count} spot(s)) and {action_desc}!\n\n"
                 f"Delivery Folders:\n{folder_summary}\n\n"
                 f"Review log at:\n{log_path}"
             )
@@ -4047,6 +4160,38 @@ class SuperJoyWorkstation:
         var templates = {templates_json};
         var beepFile = new File({json.dumps(beep_path)});
 
+        function ensureSuperJoyOutputTemplates(seedAepPath) {{
+            try {{
+                if (!seedAepPath) return;
+                var seedFile = new File(seedAepPath);
+                if (!seedFile.exists) return;
+                if (app.project) app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+                app.newProject();
+                var tc = app.project.items.addComp("_tpl_check", 1920, 1080, 1.0, 1.0, 24.0);
+                var trq = app.project.renderQueue.items.add(tc);
+                var tpls = trq.outputModule(1).templates;
+                var hasProRes = false, hasH264 = false;
+                for (var t = 0; t < tpls.length; t++) {{
+                    if (String(tpls[t]) === "Apple ProRes 422 HQ") hasProRes = true;
+                    if (String(tpls[t]) === "SuperJoy H.264 25 Mbps") hasH264 = true;
+                }}
+                app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+                if (!hasProRes || !hasH264) {{
+                    app.open(seedFile);
+                    if (!hasProRes && app.project.renderQueue.numItems >= 1) {{
+                        try {{ app.project.renderQueue.item(1).outputModule(1).setSettings({{"Output File Info": {{"Subfolder Path": ""}}}}); }} catch (eS1) {{}}
+                        app.project.renderQueue.item(1).outputModule(1).saveAsTemplate("Apple ProRes 422 HQ");
+                    }}
+                    if (!hasH264 && app.project.renderQueue.numItems >= 2) {{
+                        try {{ app.project.renderQueue.item(2).outputModule(1).setSettings({{"Output File Info": {{"Subfolder Path": ""}}}}); }} catch (eS2) {{}}
+                        app.project.renderQueue.item(2).outputModule(1).saveAsTemplate("SuperJoy H.264 25 Mbps");
+                    }}
+                    app.preferences.saveToDisk();
+                    app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+                }}
+            }} catch (eSeed) {{}}
+        }}
+
         // Map a video size to the nearest standard aspect key.
         function pickAspect(w, h) {{
             var r = w / h;
@@ -4081,7 +4226,7 @@ class SuperJoyWorkstation:
                 var omPro = rqPro.outputModule(1);
                 applyOutputTemplateSafe(omPro, ["Apple ProRes 422 HQ", "High Quality", "Lossless"]);
                 try {{
-                    omPro.setSettings({{"Output Audio": "On"}});
+                    omPro.setSettings({{"Output Audio": "On", "Output File Info": {{"Subfolder Path": ""}}}});
                 }} catch (eAudP) {{}}
                 omPro.file = new File(proresPath);
             }}
@@ -4089,12 +4234,13 @@ class SuperJoyWorkstation:
                 var rqMp4 = app.project.renderQueue.items.add(comp);
                 var omMp4 = rqMp4.outputModule(1);
                 applyOutputTemplateSafe(omMp4, [
+                    "SuperJoy H.264 25 Mbps",
                     "H.264 - Match Render Settings - 25 Mbps",
                     "H.264 - Match Render Settings - 40 Mbps",
                     "H.264 - Match Render Settings - 15 Mbps"
                 ]);
                 try {{
-                    omMp4.setSettings({{"Output Audio": "On"}});
+                    omMp4.setSettings({{"Output Audio": "On", "Output File Info": {{"Subfolder Path": ""}}}});
                 }} catch (eAudM) {{}}
                 omMp4.file = new File(h264Path);
             }}
@@ -4243,6 +4389,8 @@ class SuperJoyWorkstation:
             }}
         }} catch (eClose) {{}}
 
+        ensureSuperJoyOutputTemplates(cfg.ae_seed_aep || "");
+
         var templateComps = {{}};
         var solidComps = {{"y": null, "n": null}};
         var usingAepTemplate = (templates["_aep"] !== undefined && templates["_aep"] !== "");
@@ -4325,7 +4473,7 @@ class SuperJoyWorkstation:
                 populateSlateComp(slateComp, job, solidComps);
             }}
 
-            // Standalone Slate Only mode: queue the populated slateComp to SLATED/ProRes (.mov) and SLATED/h264 (.mp4)
+            // Standalone Slate Only mode: queue the populated slateComp to ProRes (.mov)
             if (isSlateOnly) {{
                 if (slateComp) {{
                     queueProResAndH264(
@@ -4403,26 +4551,38 @@ class SuperJoyWorkstation:
             }}
         }}
 
+        app.endUndoGroup();
+
         if (skipped.length) {{ alert("Skipped (no matching slate template):\\n" + skipped.join("\\n")); }}
         var aepFile = new File({json.dumps(aep_path)});
         app.project.save(aepFile);
-        var queued = false, lastErr = "";
         __SJ_STATUS.rqItems = app.project.renderQueue.numItems;
-        for (var qa = 0; qa < 4 && !queued; qa++) {{
+
+        if (cfg.slates_only) {{
             try {{
-                app.project.renderQueue.queueInAME(false);
-                queued = true;
+                app.project.renderQueue.render();
+                app.project.save(aepFile);
+                __SJ_STATUS.rendered = true;
                 __SJ_STATUS.queued = true;
-            }} catch (eQ) {{
-                lastErr = String(eQ);
-                $.sleep(5000);
+            }} catch (eRen) {{
+                __SJ_STATUS.error = "After Effects render failed: " + __sjErrText(eRen);
+            }}
+        }} else {{
+            var queued = false, lastErr = "";
+            for (var qa = 0; qa < 4 && !queued; qa++) {{
+                try {{
+                    app.project.renderQueue.queueInAME(false);
+                    queued = true;
+                    __SJ_STATUS.queued = true;
+                }} catch (eQ) {{
+                    lastErr = __sjErrText(eQ);
+                    $.sleep(5000);
+                }}
+            }}
+            if (!queued) {{
+                __SJ_STATUS.error = "Could not queue in Adobe Media Encoder: " + lastErr;
             }}
         }}
-        if (!queued) {{
-            __SJ_STATUS.error = "Could not queue in Adobe Media Encoder: " + lastErr;
-            alert("Could not reach Adobe Media Encoder (" + lastErr + ").\\n\\nThe project is saved with the render queue intact. Make sure Media Encoder is open and not frozen (quit and relaunch it if needed), then in After Effects click 'Queue in AME' in the Render Queue panel.");
-        }}
-        app.endUndoGroup();
         """
         with open(path, "w", encoding="utf-8") as f:
             f.write(wrap_jsx_with_status(jsx_code, path + ".status"))
