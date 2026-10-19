@@ -38,13 +38,9 @@ BG_GREY = "#383E56"
 BG_GREY_HOVER = "#454C68"
 BG_DISABLED = "#4A4F66"
 
-# Preferred UI font (matches the slate). Falls back cleanly if TT Fors isn't installed.
-FONT = "Helvetica"
+# Preferred UI font (matches the slate). Uses system-local Avenir Next by default.
+FONT = "Avenir Next"
 FONT_CANDIDATES = (
-    "TT Fors",
-    "TT Fors Trial",
-    "TT Fors Variable",
-    "TT Fors Medium",
     "Avenir Next",
     "Helvetica Neue",
     "Helvetica",
@@ -4513,6 +4509,42 @@ open "{primary_target}"
             }}
         }}
 
+        function mapFontToAvenirNext(oldFont, oldStyle) {{
+            var f = String(oldFont || "").toLowerCase();
+            var s = String(oldStyle || "").toLowerCase();
+            var isItalic = (f.indexOf("it") !== -1) || (s.indexOf("it") !== -1) || (s.indexOf("oblique") !== -1);
+            if (f.indexOf("blk") !== -1 || f.indexOf("xbd") !== -1 || f.indexOf("hvy") !== -1 || s.indexOf("blk") !== -1 || s.indexOf("xbd") !== -1 || s.indexOf("heavy") !== -1 || s.indexOf("black") !== -1) {{
+                return isItalic ? "AvenirNext-HeavyItalic" : "AvenirNext-Heavy";
+            }}
+            if (f.indexOf("dmbd") !== -1 || f.indexOf("demi") !== -1 || f.indexOf("sbd") !== -1 || s.indexOf("dmbd") !== -1 || s.indexOf("demi") !== -1 || s.indexOf("semi") !== -1) {{
+                return isItalic ? "AvenirNext-DemiBoldItalic" : "AvenirNext-DemiBold";
+            }}
+            if (f.indexOf("bd") !== -1 || f.indexOf("bold") !== -1 || s.indexOf("bold") !== -1 || s === "bd") {{
+                return isItalic ? "AvenirNext-BoldItalic" : "AvenirNext-Bold";
+            }}
+            if (f.indexOf("med") !== -1 || f.indexOf("md") !== -1 || s.indexOf("med") !== -1) {{
+                return isItalic ? "AvenirNext-MediumItalic" : "AvenirNext-Medium";
+            }}
+            if (f.indexOf("thin") !== -1 || f.indexOf("ul") !== -1 || f.indexOf("lt") !== -1 || s.indexOf("light") !== -1 || s.indexOf("thin") !== -1) {{
+                return isItalic ? "AvenirNext-UltraLightItalic" : "AvenirNext-UltraLight";
+            }}
+            return isItalic ? "AvenirNext-Italic" : "AvenirNext-Regular";
+        }}
+
+        function ensureAvenirNextFont(layer) {{
+            try {{
+                var sp = layer.property("Source Text");
+                if (!sp) return;
+                var td = sp.value;
+                var fontStr = String(td.font || "").toLowerCase();
+                var famStr = String(td.fontFamily || "").toLowerCase();
+                if (fontStr.indexOf("ttfors") !== -1 || famStr.indexOf("tt fors") !== -1 || famStr.indexOf("ttfors") !== -1) {{
+                    td.font = mapFontToAvenirNext(td.font, td.fontStyle);
+                    sp.setValue(td);
+                }}
+            }} catch (eFont) {{}}
+        }}
+
         // Populate all dynamic text and Flame layers inside a slate composition.
         function populateSlateComp(slateComp, job, solidComps) {{
             var td = job.text_data || {{}};
@@ -4535,6 +4567,7 @@ open "{primary_target}"
                 }}
 
                 if (layer instanceof TextLayer) {{
+                    ensureAvenirNextFont(layer);
                     var val = resolveFieldValue(layer, td);
                     if (val !== null) {{
                         applySingleLineText(layer, val, maxLineW);
