@@ -1639,14 +1639,17 @@ class SuperJoyWorkstation:
             self.auto_transcode_var,
             font_spec=(FONT, 10, "bold"),
         ).pack(side="left", padx=(12, 0))
+        # Hint gets its own row so it is never clipped at narrow window widths
         self.output_mode_hint = tk.Label(
-            mode_row,
+            ab,
             text="SLATED & UNSLATED (ProRes + h264)",
             font=(FONT, 10),
             bg=BG_CARD,
             fg=TEXT_MUTED,
+            anchor="w",
+            justify="left",
         )
-        self.output_mode_hint.pack(side="right", padx=(6, 0))
+        self.output_mode_hint.grid(row=6, column=1, columnspan=2, sticky="ew", pady=(0, 2))
 
         # 4. Segmented Mode Tab Bar (4 Focused Broadcast Modes)
         tab_bar_frame = tk.Frame(self.root, bg=BG_DARK)
