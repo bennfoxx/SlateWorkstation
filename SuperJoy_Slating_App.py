@@ -403,6 +403,19 @@ def create_delivery_folders(base_out_dir, include_slated=True, include_unslated=
     return paths
 
 
+def create_flat_slate_folder(out_dir):
+    """Standalone slates: a single flat output folder (.mov only, no ProRes/h264 subfolders)."""
+    os.makedirs(out_dir, exist_ok=True)
+    return {
+        "base": out_dir,
+        "slated_prores": out_dir,
+        "slated_h264": "",
+        "unslated_prores": "",
+        "unslated_h264": "",
+        "presets_dir": os.path.join(out_dir, "_AME_Presets"),
+    }
+
+
 def ensure_ame_presets(presets_dir):
     """Ensure the two exact Adobe Media Encoder (.epr) preset files exist in `presets_dir`:
     1. ProRes Master (.mov): Apple ProRes 422 HQ, Match Source resolution & frame rate
@@ -2157,7 +2170,7 @@ class SuperJoyWorkstation:
         slates_only = self.output_mode_var.get() == "slates_only"
         if hasattr(self, "output_mode_hint"):
             self.output_mode_hint.config(
-                text="SLATED/ProRes & SLATED/h264 (No Video)"
+                text=".mov only \u2192 single output folder (No Video)"
                 if slates_only
                 else "SLATED & UNSLATED (ProRes + h264)",
                 fg=ACCENT_YELLOW if slates_only else TEXT_MUTED,
@@ -3589,11 +3602,15 @@ class SuperJoyWorkstation:
             output_dir = os.path.join(base_out_parent, subfolder_name)
 
         auto_transcode = bool(self.auto_transcode_var.get())
-        folders = create_delivery_folders(
-            output_dir,
-            include_slated=True,
-            include_unslated=(not slates_only and auto_transcode),
-        )
+        if slates_only:
+            auto_transcode = False  # standalone slates are .mov only
+            folders = create_flat_slate_folder(output_dir)
+        else:
+            folders = create_delivery_folders(
+                output_dir,
+                include_slated=True,
+                include_unslated=auto_transcode,
+            )
         presets = ensure_ame_presets(folders["presets_dir"])
 
         render_cfg = dict(getattr(self, "render_settings", {"fps": DEFAULT_FPS, "width": 1920, "height": 1080}))
@@ -3612,8 +3629,9 @@ class SuperJoyWorkstation:
             f"Template AEP:    {templates.get('_aep', template_dir)}",
             f"Output Root:     {output_dir}",
             f"Slated ProRes:   {folders['slated_prores']}",
-            f"Slated H.264:    {folders['slated_h264']}",
         ]
+        if not slates_only:
+            log_entries.append(f"Slated H.264:    {folders['slated_h264']}")
         if not slates_only and auto_transcode:
             log_entries.extend(
                 [
@@ -3654,11 +3672,13 @@ class SuperJoyWorkstation:
 
             # Support per-slate Output Folder override in addition to batch/global Output Folder
             row_out_override = (data.get("output_dir") or "").strip()
-            if row_out_override:
+            if row_out_override and slates_only:
+                row_folders = create_flat_slate_folder(row_out_override)
+            elif row_out_override:
                 row_folders = create_delivery_folders(
                     row_out_override,
                     include_slated=True,
-                    include_unslated=(not slates_only and auto_transcode),
+                    include_unslated=auto_transcode,
                 )
             else:
                 row_folders = folders
@@ -3670,9 +3690,7 @@ class SuperJoyWorkstation:
                     data, target_aspect=asp, include_aspect=multi_aspect, suffix="Slate"
                 )
                 slated_prores_file = os.path.join(row_folders["slated_prores"], f"{out_stem}.mov")
-                slated_h264_file = (
-                    os.path.join(row_folders["slated_h264"], f"{out_stem}.mp4") if auto_transcode else ""
-                )
+                slated_h264_file = ""
                 job_entry = {
                     "video_path": "",
                     "slate_only": True,
@@ -3689,8 +3707,7 @@ class SuperJoyWorkstation:
                 }
                 ae_jobs.append(job_entry)
                 log_entries.append(
-                    f"[SUCCESS] Standalone Slate {ad_id} [{format_resolution_label(asp)}] -> SLATED/ProRes/{out_stem}.mov"
-                    + (f" & SLATED/h264/{out_stem}.mp4" if slated_h264_file else "")
+                    f"[SUCCESS] Standalone Slate {ad_id} [{format_resolution_label(asp)}] -> {out_stem}.mov"
                 )
                 success_count += 1
                 continue
@@ -3796,7 +3813,7 @@ class SuperJoyWorkstation:
             )
             mode_desc = "Standalone Slates Project" if slates_only else "Master Slated + Unslated Project"
             folder_summary = (
-                f"• {folders['slated_prores']}\n• {folders['slated_h264']}"
+                f"• {folders['slated_prores']}"
                 if slates_only
                 else f"• {folders['slated_prores']}\n• {folders['slated_h264']}\n• {folders['unslated_prores']}\n• {folders['unslated_h264']}"
             )
