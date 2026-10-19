@@ -4244,10 +4244,28 @@ class SuperJoyWorkstation:
 
         custom_global_out = resolve_path_input(self.output_dir.get())
         if custom_global_out:
-            output_dir = custom_global_out
+            base_slates_root = custom_global_out
         else:
             subfolder_name = "STANDALONE_SLATES" if slates_only else "SLATED_DELIVERY"
-            output_dir = os.path.join(base_out_parent, subfolder_name)
+            base_slates_root = os.path.join(base_out_parent, subfolder_name)
+
+        now = datetime.now()
+        date_folder = now.strftime("%Y_%m_%d")
+        time_folder = now.strftime("%H%M_Slates")
+        output_dir = os.path.join(base_slates_root, date_folder, time_folder)
+
+        # Detect workspace name from manual entry fields or batch data rows
+        workspace_token = ""
+        manual_ws = (self.f_workspace.get() or "").strip()
+        if manual_ws:
+            workspace_token = sanitize_filename_token(manual_ws)
+        if not workspace_token:
+            for d in batch_data:
+                norm_d = normalize_slate_row(d)
+                ws = norm_d.get("workspace") or norm_d.get("workspace_artist") or ""
+                if ws and str(ws).strip():
+                    workspace_token = sanitize_filename_token(str(ws).strip())
+                    break
 
         auto_transcode = bool(self.auto_transcode_var.get())
         if slates_only:
@@ -4269,9 +4287,8 @@ class SuperJoyWorkstation:
         render_cfg["slates_only"] = bool(slates_only)
 
         log_path = os.path.join(output_dir, "Slating_Results_Log.txt")
-        aep_master_path = os.path.join(
-            output_dir, "SuperJoy_Standalone_Slates.aep" if slates_only else "SuperJoy_Master_Slates.aep"
-        )
+        proj_filename = f"{workspace_token}_SLATES.aep" if workspace_token else ("SuperJoy_Standalone_Slates.aep" if slates_only else "SuperJoy_Master_Slates.aep")
+        aep_master_path = os.path.join(output_dir, proj_filename)
         beep_path = os.path.join(output_dir, "_2pop_1kHz_1frame.wav")
         log_entries = [
             f"SUPERJOY AE/AME {'STANDALONE SLATES' if slates_only else 'SLATING + H.264 TRANSCODE'} RESULTS LOG",
@@ -4325,14 +4342,16 @@ class SuperJoyWorkstation:
 
             # Support per-slate Output Folder override in addition to batch/global Output Folder
             row_out_override = resolve_path_input(data.get("output_dir") or "")
-            if row_out_override and slates_only:
-                row_folders = create_flat_slate_folder(row_out_override)
-            elif row_out_override:
-                row_folders = create_delivery_folders(
-                    row_out_override,
-                    include_slated=True,
-                    include_unslated=auto_transcode,
-                )
+            if row_out_override:
+                row_dest = os.path.join(row_out_override, date_folder, time_folder)
+                if slates_only:
+                    row_folders = create_flat_slate_folder(row_dest)
+                else:
+                    row_folders = create_delivery_folders(
+                        row_dest,
+                        include_slated=True,
+                        include_unslated=auto_transcode,
+                    )
             else:
                 row_folders = folders
 
