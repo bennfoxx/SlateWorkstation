@@ -13,6 +13,7 @@ python3 -m PyInstaller --noconfirm --windowed --name "$APP" \
   --add-data "sj_Slates From Spreadsheet_Template_006.aep:." \
   --add-data "sj_Slates From Spreadsheet_Template_005.aep:." \
   --add-data "Slates From Spreadsheet_Template_001.xlsx:." \
+  --add-data "readme.txt:." \
   SuperJoy_Slating_App.py
 
 # Version in Info.plist

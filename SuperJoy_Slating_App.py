@@ -160,6 +160,7 @@ _TPL_006 = os.path.join(_APP_DIR, "sj_Slates From Spreadsheet_Template_006.aep")
 _TPL_005 = os.path.join(_APP_DIR, "sj_Slates From Spreadsheet_Template_005.aep")
 DEFAULT_TEMPLATE_AEP = _TPL_006 if os.path.exists(_TPL_006) else _TPL_005
 DEFAULT_SPREADSHEET_XLSX = os.path.join(_APP_DIR, "Slates From Spreadsheet_Template_001.xlsx")
+DEFAULT_README = os.path.join(_APP_DIR, "readme.txt")
 DEFAULT_AGENCY = "MARTIN*"
 METADATA_FILETYPES = [
     ("Spreadsheet & Metadata Files", "*.xlsx *.tsv *.csv *.txt"),
@@ -1445,6 +1446,53 @@ class SJLogo(tk.Canvas):
                         start=200, extent=140, style="arc", outline=BG_DARK, width=lw)
 
 
+
+class HelpCircleButton(tk.Canvas):
+    """Circular '?' help button designed for macOS Tk single-tap response."""
+
+    def __init__(self, parent, size=32, command=None, bg_fill=BG_GREY, fg=TEXT_LIGHT):
+        parent_bg = parent.cget("bg") if "bg" in parent.keys() else BG_DARK
+        super().__init__(parent, width=size, height=size, bg=parent_bg, highlightthickness=0, bd=0, takefocus=0)
+        self._size = size
+        self._cmd = command
+        self._bg_fill = bg_fill
+        self._fg = fg
+        self._last_fire = 0.0
+        self._hover = False
+        self._circle = self.create_oval(1, 1, size - 1, size - 1, fill=bg_fill, outline=BORDER_SUBTLE, width=1.5)
+        self._text = self.create_text(
+            size / 2,
+            size / 2,
+            text="?",
+            font=(FONT, int(size * 0.46), "bold"),
+            fill=fg,
+        )
+
+        self.bind("<ButtonPress-1>", self._on_press)
+        self.bind("<Double-Button-1>", self._on_press)
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
+
+    def _on_enter(self, _e=None):
+        self._hover = True
+        self.itemconfigure(self._circle, fill=ACCENT_RED, outline=ACCENT_RED)
+        self.itemconfigure(self._text, fill=TEXT_LIGHT)
+
+    def _on_leave(self, _e=None):
+        self._hover = False
+        self.itemconfigure(self._circle, fill=self._bg_fill, outline=BORDER_SUBTLE)
+        self.itemconfigure(self._text, fill=self._fg)
+
+    def _on_press(self, _e=None):
+        now = time.monotonic()
+        if now - self._last_fire < 0.16:
+            return "break"
+        self._last_fire = now
+        if self._cmd:
+            self.after_idle(self._cmd)
+        return "break"
+
+
 def mkbtn(parent, text="", command=None, bg=None, padx=18, pady=8, **_ignored):
     color = {
         "#4CAF50": BG_GREEN,
@@ -1698,6 +1746,15 @@ class SuperJoyWorkstation:
             radius=16,
         )
         self.btn_run.pack(anchor="center")
+
+        self.btn_help = HelpCircleButton(
+            footer,
+            size=30,
+            command=self.open_readme,
+            bg_fill=BG_CARD,
+            fg=TEXT_MUTED,
+        )
+        self.btn_help.place(relx=1.0, rely=0.5, anchor="e")
 
         # 3. Master Assets Card
         assets_card = RoundedCard(self.root, bg_fill=BG_CARD, border_color=BORDER_SUBTLE, radius=16, pad=10)
@@ -2448,6 +2505,40 @@ class SuperJoyWorkstation:
         if self.output_mode_var.get() == "slates_only":
             return "BUILD & RENDER STANDALONE SLATES (AE)"
         return "GENERATE .AEP & QUEUE IN AME"
+
+    def open_readme(self):
+        """Open the workstation documentation / README."""
+        candidates = [
+            DEFAULT_README,
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "readme.txt"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "README.md"),
+            os.path.join(_APP_DIR, "README.md"),
+            os.path.join(os.path.dirname(sys.executable), "readme.txt"),
+            os.path.join(os.path.dirname(sys.executable), "README.md"),
+        ]
+        target = None
+        for c in candidates:
+            if c and os.path.isfile(c):
+                target = c
+                break
+
+        if target:
+            try:
+                subprocess.Popen(["open", target])
+                return
+            except Exception as e:
+                self._alert("showwarning", "README", f"Could not launch viewer: {e}")
+                return
+
+        self._alert(
+            "showinfo",
+            "SuperJoy Slating Workstation",
+            "SuperJoy Slating Workstation v1.0.0\n\n"
+            "• Standalone Slates: Renders native resolution 5s slates directly in After Effects.\n"
+            "• Slated Comps: 5s Slate + 2-Pop at 5:00 + 2s Black + Master Video.\n"
+            "• Un-slated Comps: Clean master video exported starting at 01:00:00:00.\n"
+            "• All slates use system-local Avenir Next typography."
+        )
 
     # ------------------------------------------------------------------
     # Batch Slate Builder (Auto-Pull, Multi-Resolution & Retroactive Edit)
@@ -4642,15 +4733,20 @@ open "{primary_target}"
         app.beginUndoGroup("Batch Slate Generation");
 
         var skipped = [];
-        var masterFolder = app.project.items.addFolder("Slated Comps");
-        var unslatedFolder = app.project.items.addFolder("Unslated Comps");
-        var slatesFolder = app.project.items.addFolder("Generated Slate Precomps");
-        slatesFolder.parentFolder = masterFolder;
+        var isStandaloneOnly = (cfg.slates_only === true);
+        var masterFolder = isStandaloneOnly ? null : app.project.items.addFolder("Slated Comps");
+        var unslatedFolder = isStandaloneOnly ? null : app.project.items.addFolder("Unslated Comps");
+        var slatesFolder = app.project.items.addFolder(isStandaloneOnly ? "STANDALONE SLATES" : "Generated Slate Precomps");
+        if (masterFolder) {{
+            slatesFolder.parentFolder = masterFolder;
+        }}
 
         var beepItem = null;
         if (!usingAepTemplate && beepFile.exists) {{
             beepItem = app.project.importFile(new ImportOptions(beepFile));
-            beepItem.parentFolder = masterFolder;
+            if (masterFolder) {{
+                beepItem.parentFolder = masterFolder;
+            }}
         }}
 
         for (var i = 0; i < jobs.length; i++) {{
