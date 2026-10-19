@@ -411,46 +411,56 @@ def ensure_ame_presets(presets_dir):
     prores_dst = os.path.join(presets_dir, "SuperJoy_Apple_ProRes_422_HQ_MatchSource.epr")
     h264_dst = os.path.join(presets_dir, "SuperJoy_H264_MatchSource_25Mbps.epr")
 
-    # 1. Resolve Apple ProRes 422 HQ (Match Source) system preset
-    prores_candidates = sorted(
-        glob.glob(
-            "/Applications/Adobe Media Encoder */Adobe Media Encoder *.app/Contents/MediaIO/systempresets/3F3F3F3F_4D6F6F56/Apple ProRes 422 HQ.epr"
-        ),
-        reverse=True,
-    )
-    if prores_candidates and os.path.isfile(prores_candidates[0]):
-        shutil.copyfile(prores_candidates[0], prores_dst)
+    bundled_presets_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "presets")
+    bundled_prores = os.path.join(bundled_presets_dir, "SuperJoy_Apple_ProRes_422_HQ_MatchSource.epr")
+    bundled_h264 = os.path.join(bundled_presets_dir, "SuperJoy_H264_MatchSource_25Mbps.epr")
 
-    # 2. Resolve H.264 Match Source system preset and configure 25 Mbps target/max bitrate
-    h264_candidates = sorted(
-        glob.glob(
-            "/Applications/Adobe Media Encoder */Adobe Media Encoder *.app/Contents/MediaIO/systempresets/4E49434B_48323634/00 - Match Source - High bitrate.epr"
-        ),
-        reverse=True,
-    )
-    if h264_candidates and os.path.isfile(h264_candidates[0]):
-        with open(h264_candidates[0], "r", encoding="utf-8") as f:
-            xml_text = f.read()
-        xml_text = re.sub(
-            r"<PresetName>.*?</PresetName>",
-            "<PresetName>SuperJoy H.264 Match Source 25Mbps</PresetName>",
-            xml_text,
-            count=1,
+    # 1. Resolve Apple ProRes 422 HQ (Match Source)
+    if os.path.isfile(bundled_prores):
+        shutil.copyfile(bundled_prores, prores_dst)
+    else:
+        prores_candidates = sorted(
+            glob.glob(
+                "/Applications/Adobe Media Encoder */Adobe Media Encoder *.app/Contents/MediaIO/systempresets/3F3F3F3F_4D6F6F56/Apple ProRes 422 HQ.epr"
+            ),
+            reverse=True,
         )
-        xml_text = re.sub(
-            r"(<ParamValue>)10\.(</ParamValue>\s*<ParamType>3</ParamType>[\s\S]{0,220}?<ParamIdentifier>ADBEVideoTargetBitrate</ParamIdentifier>)",
-            r"\g<1>25.\g<2>",
-            xml_text,
-            count=1,
+        if prores_candidates and os.path.isfile(prores_candidates[0]):
+            shutil.copyfile(prores_candidates[0], prores_dst)
+
+    # 2. Resolve H.264 Match Source 25 Mbps
+    if os.path.isfile(bundled_h264):
+        shutil.copyfile(bundled_h264, h264_dst)
+    else:
+        h264_candidates = sorted(
+            glob.glob(
+                "/Applications/Adobe Media Encoder */Adobe Media Encoder *.app/Contents/MediaIO/systempresets/4E49434B_48323634/00 - Match Source - High bitrate.epr"
+            ),
+            reverse=True,
         )
-        xml_text = re.sub(
-            r"(<ParamValue>)12\.(</ParamValue>\s*<ParamType>3</ParamType>[\s\S]{0,220}?<ParamIdentifier>ADBEVideoMaxBitrate</ParamIdentifier>)",
-            r"\g<1>25.\g<2>",
-            xml_text,
-            count=1,
-        )
-        with open(h264_dst, "w", encoding="utf-8") as f:
-            f.write(xml_text)
+        if h264_candidates and os.path.isfile(h264_candidates[0]):
+            with open(h264_candidates[0], "r", encoding="utf-8") as f:
+                xml_text = f.read()
+            xml_text = re.sub(
+                r"<PresetName>.*?</PresetName>",
+                "<PresetName>SuperJoy H.264 Match Source 25Mbps</PresetName>",
+                xml_text,
+                count=1,
+            )
+            xml_text = re.sub(
+                r"(<ParamValue>)10\.(</ParamValue>\s*<ParamType>3</ParamType>[\s\S]{0,220}?<ParamIdentifier>ADBEVideoTargetBitrate</ParamIdentifier>)",
+                r"\g<1>25.\g<2>",
+                xml_text,
+                count=1,
+            )
+            xml_text = re.sub(
+                r"(<ParamValue>)12\.(</ParamValue>\s*<ParamType>3</ParamType>[\s\S]{0,220}?<ParamIdentifier>ADBEVideoMaxBitrate</ParamIdentifier>)",
+                r"\g<1>25.\g<2>",
+                xml_text,
+                count=1,
+            )
+            with open(h264_dst, "w", encoding="utf-8") as f:
+                f.write(xml_text)
 
     return {
         "prores_epr": prores_dst if os.path.isfile(prores_dst) else "",
@@ -3118,6 +3128,9 @@ class SuperJoyWorkstation:
                 var rqPro = app.project.renderQueue.items.add(comp);
                 var omPro = rqPro.outputModule(1);
                 applyOutputTemplateSafe(omPro, ["Apple ProRes 422 HQ", "High Quality", "Lossless"]);
+                try {{
+                    omPro.audioOutput = true;
+                }} catch (eAudP) {{}}
                 omPro.file = new File(proresPath);
             }}
             if (h264Path) {{
@@ -3128,6 +3141,9 @@ class SuperJoyWorkstation:
                     "H.264 - Match Render Settings - 40 Mbps",
                     "H.264 - Match Render Settings - 15 Mbps"
                 ]);
+                try {{
+                    omMp4.audioOutput = true;
+                }} catch (eAudM) {{}}
                 omMp4.file = new File(h264Path);
             }}
         }}
@@ -3170,6 +3186,11 @@ class SuperJoyWorkstation:
 
             var masterComp = app.project.items.addComp(job.comp_name, compW, compH, 1.0, totalDuration, compFps);
             masterComp.parentFolder = masterFolder;
+            try {{
+                if (vidItem.dropFrame !== undefined) {{
+                    masterComp.dropFrame = vidItem.dropFrame;
+                }}
+            }} catch (eDfM) {{}}
             masterComp.displayStartTime = 3593.0; // 00:59:53:00
 
             var blackSolid = masterComp.layers.addSolid([0,0,0], "2s_Black", compW, compH, 1.0, 2.0);
@@ -3209,6 +3230,11 @@ class SuperJoyWorkstation:
                 var cleanCompName = job.unslated_comp_name || (job.comp_name + "_UNSLATED");
                 var cleanComp = app.project.items.addComp(cleanCompName, compW, compH, 1.0, vidItem.duration, compFps);
                 cleanComp.parentFolder = unslatedFolder;
+                try {{
+                    if (vidItem.dropFrame !== undefined) {{
+                        cleanComp.dropFrame = vidItem.dropFrame;
+                    }}
+                }} catch (eDfClean) {{}}
                 cleanComp.displayStartTime = 3600.0; // 01:00:00:00
                 var cleanVidLayer = cleanComp.layers.add(vidItem);
                 cleanVidLayer.startTime = 0.0;
@@ -3490,6 +3516,11 @@ class SuperJoyWorkstation:
 
             var comp = app.project.items.addComp(job.comp_name, compW, compH, 1.0, cleanDuration, compFps);
             comp.parentFolder = rootFolder;
+            try {{
+                if (vidItem.dropFrame !== undefined) {{
+                    comp.dropFrame = vidItem.dropFrame;
+                }}
+            }} catch (eDfUn) {{}}
             comp.displayStartTime = 3600.0; // 01:00:00:00 picture start
 
             var vidLayer = comp.layers.add(vidItem);
@@ -3503,6 +3534,9 @@ class SuperJoyWorkstation:
                 var rqItem = app.project.renderQueue.items.add(comp);
                 var outMod = rqItem.outputModule(1);
                 applyOutputTemplateSafe(outMod, ["Apple ProRes 422 HQ", "High Quality", "Lossless"]);
+                try {{
+                    outMod.audioOutput = true;
+                }} catch (eAudP) {{}}
                 outMod.file = new File(proresTarget);
             }}
             if (job.h264_output) {{
@@ -3513,6 +3547,9 @@ class SuperJoyWorkstation:
                     "H.264 - Match Render Settings - 40 Mbps",
                     "H.264 - Match Render Settings - 15 Mbps"
                 ]);
+                try {{
+                    outMp4.audioOutput = true;
+                }} catch (eAudM) {{}}
                 outMp4.file = new File(job.h264_output);
             }}
         }}
@@ -3844,6 +3881,9 @@ class SuperJoyWorkstation:
                 var rqPro = app.project.renderQueue.items.add(comp);
                 var omPro = rqPro.outputModule(1);
                 applyOutputTemplateSafe(omPro, ["Apple ProRes 422 HQ", "High Quality", "Lossless"]);
+                try {{
+                    omPro.audioOutput = true;
+                }} catch (eAudP) {{}}
                 omPro.file = new File(proresPath);
             }}
             if (h264Path) {{
@@ -3854,6 +3894,9 @@ class SuperJoyWorkstation:
                     "H.264 - Match Render Settings - 40 Mbps",
                     "H.264 - Match Render Settings - 15 Mbps"
                 ]);
+                try {{
+                    omMp4.audioOutput = true;
+                }} catch (eAudM) {{}}
                 omMp4.file = new File(h264Path);
             }}
         }}
@@ -4096,13 +4139,21 @@ class SuperJoyWorkstation:
             }}
 
             // Slated Master mode (Slate + 2-Pop + 2s Black + Master Video):
-            var compW = (job.aspect && job.aspect !== vidAspect && job.width) ? job.width : (vidItem.width > 0 ? vidItem.width : cfg.width);
-            var compH = (job.aspect && job.aspect !== vidAspect && job.height) ? job.height : (vidItem.height > 0 ? vidItem.height : cfg.height);
+            // Rule: Deliverables are rendered from specific native resolutions and never letterboxed or cropped.
+            var compW = (vidItem.width > 0) ? vidItem.width : (job.width ? job.width : cfg.width);
+            var compH = (vidItem.height > 0) ? vidItem.height : (job.height ? job.height : cfg.height);
             var compFps = vidItem.frameRate > 0 ? vidItem.frameRate : cfg.fps;
             var totalDuration = 7.0 + vidItem.duration;
             var compName = job.aspect ? (slateId + "_" + job.aspect + "_SLATED") : (slateId + "_SLATED");
             var masterComp = app.project.items.addComp(compName, compW, compH, 1.0, totalDuration, compFps);
             masterComp.parentFolder = masterFolder;
+
+            // Preserve drop-frame setting from source footage for accurate broadcast timecode display
+            try {{
+                if (vidItem.dropFrame !== undefined) {{
+                    masterComp.dropFrame = vidItem.dropFrame;
+                }}
+            }} catch (eDf) {{}}
 
             masterComp.displayStartTime = 3593.0; // 00:59:53:00
 
@@ -4129,16 +4180,10 @@ class SuperJoyWorkstation:
                 slateLayer.property("Scale").setValue([sUniform, sUniform]);
             }}
 
+            // Master Video is ALWAYS rendered native 100% scale without letterbox or crop
             var vidLayer = masterComp.layers.add(vidItem);
             vidLayer.startTime = 7.0;
-            if (vidItem.width > 0 && vidItem.height > 0 && (vidItem.width !== compW || vidItem.height !== compH)) {{
-                var vsx = (compW / vidItem.width) * 100.0;
-                var vsy = (compH / vidItem.height) * 100.0;
-                var vs = Math.min(vsx, vsy);
-                vidLayer.property("Scale").setValue([vs, vs]);
-            }} else {{
-                vidLayer.property("Scale").setValue([100, 100]);
-            }}
+            vidLayer.property("Scale").setValue([100, 100]);
 
             // Queue Slated Master to SLATED/ProRes (.mov 422 HQ) and SLATED/h264 (.mp4 25Mbps)
             queueProResAndH264(
@@ -4154,6 +4199,11 @@ class SuperJoyWorkstation:
                 var cleanCompName = job.clean_stem ? (job.clean_stem + "_UNSLATED") : (slateId + "_UNSLATED");
                 var unslatedComp = app.project.items.addComp(cleanCompName, cleanW, cleanH, 1.0, vidItem.duration, compFps);
                 unslatedComp.parentFolder = unslatedFolder;
+                try {{
+                    if (vidItem.dropFrame !== undefined) {{
+                        unslatedComp.dropFrame = vidItem.dropFrame;
+                    }}
+                }} catch (eDfU) {{}}
                 unslatedComp.displayStartTime = 3600.0; // 01:00:00:00 picture start
                 var cleanLayer = unslatedComp.layers.add(vidItem);
                 cleanLayer.startTime = 0.0;
