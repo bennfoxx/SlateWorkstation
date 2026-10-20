@@ -5051,7 +5051,7 @@ class SuperJoyWorkstation:
                 asp = target_aspect or self.aspect_var.get() or DEFAULT_ASPECT
                 tw, th = ASPECT_RESOLUTIONS.get(asp, (1920, 1080))
                 out_stem = build_canonical_delivery_stem(
-                    data, target_aspect=asp, include_aspect=multi_aspect, suffix="Slate"
+                    data, target_aspect=asp, include_aspect=multi_aspect, suffix=""
                 )
                 slated_prores_file = os.path.join(row_folders["slated_prores"], f"{out_stem}.mov")
                 slated_h264_file = ""
