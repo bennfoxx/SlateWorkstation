@@ -961,6 +961,104 @@ def wake_macos_window(root):
         pass
 
 
+def sanitize_dropped_path(text):
+    """Extract and sanitize a single local file or folder path from drag/drop or clipboard text.
+    Handles 'file://' URIs, percent-encoding, Tcl braces, quotes, and whitespace."""
+    if not text:
+        return ""
+    s = str(text).strip()
+    lines = [x.strip() for x in s.splitlines() if x.strip()]
+    if lines:
+        s = lines[0]
+    if s.startswith("{") and s.endswith("}"):
+        s = s[1:-1].strip()
+    if s.startswith("file://"):
+        s = s[7:]
+    s = urllib.parse.unquote(s).strip()
+    if (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")):
+        s = s[1:-1].strip()
+    return os.path.expanduser(s)
+
+
+def get_macos_drag_or_clipboard_path():
+    """Retrieve the dragged or copied file/folder path directly from macOS NSPasteboard via ctypes.
+    Checks the macOS drag pasteboard first ('Apple CFPasteboard drag'), then the general pasteboard."""
+    if sys.platform != "darwin":
+        return ""
+    try:
+        objc = ctypes.cdll.LoadLibrary("/usr/lib/libobjc.A.dylib")
+        ctypes.cdll.LoadLibrary("/System/Library/Frameworks/AppKit.framework/AppKit")
+
+        objc.objc_getClass.restype = ctypes.c_void_p
+        objc.objc_getClass.argtypes = [ctypes.c_char_p]
+        objc.sel_registerName.restype = ctypes.c_void_p
+        objc.sel_registerName.argtypes = [ctypes.c_char_p]
+
+        msg = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)(("objc_msgSend", objc))
+        msg_call2 = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)(("objc_msgSend", objc))
+        msg_str = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_char_p)(("objc_msgSend", objc))
+        msg_uint = ctypes.CFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p, ctypes.c_void_p)(("objc_msgSend", objc))
+        msg_idx = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong)(("objc_msgSend", objc))
+        msg_cstr = ctypes.CFUNCTYPE(ctypes.c_char_p, ctypes.c_void_p, ctypes.c_void_p)(("objc_msgSend", objc))
+
+        NSPasteboard = objc.objc_getClass(b"NSPasteboard")
+        NSString = objc.objc_getClass(b"NSString")
+        sel_pbWithName = objc.sel_registerName(b"pasteboardWithName:")
+        sel_strWithUTF8 = objc.sel_registerName(b"stringWithUTF8String:")
+        sel_propList = objc.sel_registerName(b"propertyListForType:")
+        sel_stringForType = objc.sel_registerName(b"stringForType:")
+        sel_count = objc.sel_registerName(b"count")
+        sel_objAtIndex = objc.sel_registerName(b"objectAtIndex:")
+        sel_UTF8String = objc.sel_registerName(b"UTF8String")
+
+        ns_filenames_type = msg_str(NSString, sel_strWithUTF8, b"NSFilenamesPboardType")
+        ns_fileurl_type = msg_str(NSString, sel_strWithUTF8, b"public.file-url")
+        ns_text_type = msg_str(NSString, sel_strWithUTF8, b"public.utf8-plain-text")
+
+        # 1. Try drag pasteboard
+        ns_drag_name = msg_str(NSString, sel_strWithUTF8, b"Apple CFPasteboard drag")
+        drag_pb = msg_call2(NSPasteboard, sel_pbWithName, ns_drag_name)
+        pb_candidates = [drag_pb] if drag_pb else []
+        # 2. Try general pasteboard as fallback
+        gen_pb = msg(NSPasteboard, objc.sel_registerName(b"generalPasteboard"))
+        if gen_pb:
+            pb_candidates.append(gen_pb)
+
+        for pb in pb_candidates:
+            # Check filenames list
+            arr = msg_call2(pb, sel_propList, ns_filenames_type)
+            if arr:
+                count = msg_uint(arr, sel_count)
+                if count > 0:
+                    item = msg_idx(arr, sel_objAtIndex, 0)
+                    cstr = msg_cstr(item, sel_UTF8String)
+                    if cstr:
+                        p = sanitize_dropped_path(cstr.decode("utf-8", errors="replace"))
+                        if p:
+                            return p
+
+            # Check public.file-url
+            url_obj = msg_call2(pb, sel_stringForType, ns_fileurl_type)
+            if url_obj:
+                cstr = msg_cstr(url_obj, sel_UTF8String)
+                if cstr:
+                    p = sanitize_dropped_path(cstr.decode("utf-8", errors="replace"))
+                    if p:
+                        return p
+
+            # Check plain text if it points to an existing file/folder
+            text_obj = msg_call2(pb, sel_stringForType, ns_text_type)
+            if text_obj:
+                cstr = msg_cstr(text_obj, sel_UTF8String)
+                if cstr:
+                    p = sanitize_dropped_path(cstr.decode("utf-8", errors="replace"))
+                    if os.path.exists(p):
+                        return p
+    except Exception:
+        pass
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # Domain Helpers
 # ---------------------------------------------------------------------------
@@ -1320,13 +1418,15 @@ class RoundedButton(tk.Canvas):
 
 
 class RoundedEntry(tk.Canvas):
-    """Smooth rounded text input field. Single-tapping anywhere inside the rounded box
-    or text area immediately focuses the Entry widget."""
+    """Smooth rounded text input field with drag-and-drop path population,
+    native keyboard cursor navigation (Up arrow / Home to jump to start),
+    and tap-to-focus."""
 
     def __init__(self, parent, textvariable, width=20, radius=10):
         f = tkfont.Font(font=(FONT, 13))
         self._radius = radius
         self._focus = False
+        self._var = textvariable
         req_w = max(72, width * f.measure("0") + 24)
         req_h = f.metrics("linespace") + 14
         parent_bg = parent.cget("bg") if "bg" in parent.keys() else BG_CARD
@@ -1357,6 +1457,44 @@ class RoundedEntry(tk.Canvas):
         self.entry.bind("<FocusIn>", lambda _e: self._set_focus(True))
         self.entry.bind("<FocusOut>", lambda _e: self._set_focus(False))
 
+        # Up arrow / Page Up / Home / Command-Up: Go to the very top/start of the text
+        self.entry.bind("<Up>", self._on_go_to_start)
+        self.entry.bind("<Prior>", self._on_go_to_start)
+        self.entry.bind("<Home>", self._on_go_to_start)
+        self.entry.bind("<Command-Up>", self._on_go_to_start)
+        self.entry.bind("<Command-Left>", self._on_go_to_start)
+        self.entry.bind("<Control-a>", self._on_go_to_start)
+
+        # Shift-Up / Shift-Home / Shift-Command-Up: Select text to the start
+        self.entry.bind("<Shift-Up>", self._on_select_to_start)
+        self.entry.bind("<Shift-Home>", self._on_select_to_start)
+        self.entry.bind("<Shift-Command-Up>", self._on_select_to_start)
+        self.entry.bind("<Shift-Command-Left>", self._on_select_to_start)
+
+        # Down arrow / Page Down / End / Command-Down: Go to the end of the text
+        self.entry.bind("<Down>", self._on_go_to_end)
+        self.entry.bind("<Next>", self._on_go_to_end)
+        self.entry.bind("<End>", self._on_go_to_end)
+        self.entry.bind("<Command-Down>", self._on_go_to_end)
+        self.entry.bind("<Command-Right>", self._on_go_to_end)
+        self.entry.bind("<Control-e>", self._on_go_to_end)
+
+        # Drag-and-drop & paste path handling
+        self.bind("<B1-Motion>", self._on_canvas_motion)
+        self.bind("<ButtonRelease-1>", self._on_canvas_release)
+        self.entry.bind("<B1-Motion>", self._on_canvas_motion)
+        self.entry.bind("<ButtonRelease-1>", self._on_canvas_release)
+        self.entry.bind("<<Paste>>", self._on_paste)
+        self.entry.bind("<<PasteSelection>>", self._on_paste_selection)
+
+        # If tkdnd is registered or Aqua drop event fires
+        for drop_evt in ("<<Drop>>", "<Drop>", "<<PasteSelection>>"):
+            try:
+                self.bind(drop_evt, self._on_drop_event)
+                self.entry.bind(drop_evt, self._on_drop_event)
+            except Exception:
+                pass
+
     def _on_entry_tap(self, _e=None):
         self.entry.focus_force()
 
@@ -1364,6 +1502,87 @@ class RoundedEntry(tk.Canvas):
         self.entry.focus_force()
         self.entry.icursor("end")
         return "break"
+
+    def _on_go_to_start(self, _e=None):
+        """Move cursor to the very start of the text and scroll the view to the beginning."""
+        self.entry.selection_clear()
+        self.entry.icursor(0)
+        self.entry.xview_moveto(0.0)
+        return "break"
+
+    def _on_select_to_start(self, _e=None):
+        """Select from current cursor position backward to the start of the text."""
+        cur = self.entry.index("insert")
+        self.entry.selection_range(0, cur)
+        self.entry.icursor(0)
+        self.entry.xview_moveto(0.0)
+        return "break"
+
+    def _on_go_to_end(self, _e=None):
+        """Move cursor to the end of the text and scroll view to the end."""
+        self.entry.selection_clear()
+        self.entry.icursor("end")
+        self.entry.xview_moveto(1.0)
+        return "break"
+
+    def _set_path_value(self, path):
+        """Set the text value to the sanitized path, position cursor at start, and clear selection."""
+        p = sanitize_dropped_path(path)
+        if not p:
+            return False
+        if hasattr(self._var, "set"):
+            self._var.set(p)
+        else:
+            self.entry.delete(0, "end")
+            self.entry.insert(0, p)
+        self.entry.icursor(0)
+        self.entry.xview_moveto(0.0)
+        self.entry.selection_clear()
+        return True
+
+    def _on_canvas_motion(self, _e=None):
+        # Allow normal selection/dragging inside entry
+        pass
+
+    def _on_canvas_release(self, _e=None):
+        """On mouse release after dragging over or into the box, check macOS drag pasteboard."""
+        p = get_macos_drag_or_clipboard_path()
+        if p and os.path.exists(p):
+            self._set_path_value(p)
+
+    def _on_drop_event(self, event):
+        """Handle Tk drop event payload if provided by DnD extension."""
+        data = getattr(event, "data", None)
+        if data:
+            p = sanitize_dropped_path(data)
+            if p:
+                self._set_path_value(p)
+                return "break"
+        p = get_macos_drag_or_clipboard_path()
+        if p:
+            self._set_path_value(p)
+            return "break"
+
+    def _on_paste(self, _e=None):
+        """When pasting into a text field, if clipboard contains a file URL or path, clean it nicely."""
+        try:
+            raw = self.entry.clipboard_get()
+            p = sanitize_dropped_path(raw)
+            if p and (os.path.exists(p) or "/" in p or "\\" in p):
+                self._set_path_value(p)
+                return "break"
+        except Exception:
+            pass
+
+    def _on_paste_selection(self, event=None):
+        try:
+            raw = getattr(event, "data", "") or self.entry.clipboard_get()
+            p = sanitize_dropped_path(raw)
+            if p and (os.path.exists(p) or "/" in p or "\\" in p):
+                self._set_path_value(p)
+                return "break"
+        except Exception:
+            pass
 
     def _set_focus(self, focused):
         self._focus = focused
