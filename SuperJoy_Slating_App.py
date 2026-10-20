@@ -2255,6 +2255,9 @@ class SuperJoyWorkstation:
         self.fps_var = tk.StringVar(value=DEFAULT_FPS_LABEL)
         self.aspect_var = tk.StringVar(value=DEFAULT_ASPECT)
         self.active_tab_var = tk.StringVar(value="1")  # Open on Batch Slate Builder by default
+        self.drawer_open = False
+        self.drawer_width = 540
+        self.base_width = 1020
         self.manual_batch_data = []
         self.marry_pairs_data = []
         self.latest_previews = []
@@ -2409,6 +2412,15 @@ class SuperJoyWorkstation:
             pady=6,
         )
         self.btn_update.pack(side="right", padx=(8, 4))
+        self.btn_toggle_drawer = mkbtn(
+            header,
+            text="📋 View Slate Queue ▶",
+            bg=ACCENT_RED,
+            command=self.toggle_queue_drawer,
+            padx=14,
+            pady=6,
+        )
+        self.btn_toggle_drawer.pack(side="right", padx=(8, 4))
         self.btn_view_previews = mkbtn(
             header,
             text="👁 Slate Previews",
@@ -2609,9 +2621,16 @@ class SuperJoyWorkstation:
         # Compatibility shim so any external code checking self.notebook works seamlessly
         self.notebook = self
 
-        # 5. Workspace Card (hosts the 4 mode pages; indices 0, 1, 2, 3 preserved)
-        self.workspace_card = RoundedCard(self.root, bg_fill=BG_CARD, border_color=BORDER_SUBTLE, radius=16, pad=12)
-        self.workspace_card.pack(side="top", fill="both", expand=True, padx=24, pady=(0, 4))
+        # 5. Main Content Area & Slide-Out Slate Queue Drawer
+        self.main_content_frame = tk.Frame(self.root, bg=BG_DARK)
+        self.main_content_frame.pack(side="top", fill="both", expand=True, padx=24, pady=(0, 4))
+
+        # Slide-out Drawer Panel (placed on right side of main content frame)
+        self.drawer_container = tk.Frame(self.main_content_frame, bg=BG_DARK, width=self.drawer_width)
+
+        # Workspace Card (hosts the 4 mode pages; indices 0, 1, 2, 3 preserved)
+        self.workspace_card = RoundedCard(self.main_content_frame, bg_fill=BG_CARD, border_color=BORDER_SUBTLE, radius=16, pad=12)
+        self.workspace_card.pack(side="left", fill="both", expand=True)
         wb = self.workspace_card.body
 
         self.tab_file = tk.Frame(wb, bg=BG_CARD)
@@ -2624,6 +2643,7 @@ class SuperJoyWorkstation:
         self._build_tab_builder()
         self._build_tab_unslate()
         self._build_tab_marry()
+        self._build_queue_drawer()
 
         self._show_tab(int(self.active_tab_var.get()))
 
@@ -2897,11 +2917,30 @@ class SuperJoyWorkstation:
         )
         self.batch_count_lbl.pack(side="right", padx=4)
 
-        # Queue Table (tapping COMP/RES cycles resolution; tapping FLAME toggles y/n; tapping NFA toggles NFA; tapping OUTPUT FOLDER sets per-slate output dir)
+        # Compact Queue Bar & Expander (launches or opens the slide-out drawer)
+        expander_bar = tk.Frame(p, bg=BG_DARKER, bd=0, highlightthickness=1, highlightbackground=BORDER_SUBTLE)
+        expander_bar.pack(fill="x", pady=(3, 2))
+        mkbtn(
+            expander_bar,
+            text="📋 Open Full Slates Drawer ◀",
+            bg=ACCENT_RED,
+            command=self.open_queue_drawer,
+            padx=14,
+            pady=6,
+        ).pack(side="left", padx=(6, 10), pady=4)
+        tk.Label(
+            expander_bar,
+            text="Expand full-height side panel to view, inspect and manage all queued slates with maximum visibility.",
+            font=(FONT, 10),
+            bg=BG_DARKER,
+            fg=TEXT_MUTED,
+        ).pack(side="left", pady=4)
+
+        # Queue Table (embedded preview; synced live with side drawer table)
         tree_wrap = tk.Frame(p, bg=BORDER_SUBTLE, bd=0, highlightthickness=0)
         tree_wrap.pack(fill="both", expand=True, pady=(2, 0))
         columns = ("id", "title", "res", "trt", "flame", "nfa", "client", "output")
-        self.tree = ttk.Treeview(tree_wrap, columns=columns, show="headings", height=4)
+        self.tree = ttk.Treeview(tree_wrap, columns=columns, show="headings", height=5)
         self.tree.heading("id", text="AD-ID")
         self.tree.heading("title", text="TITLE")
         self.tree.heading("res", text="COMP / RES (TAP)")
@@ -2919,8 +2958,174 @@ class SuperJoyWorkstation:
         self.tree.column("client", width=85, minwidth=70, anchor="w")
         self.tree.column("output", width=155, minwidth=110, anchor="w")
         self.tree.pack(fill="both", expand=True, padx=1, pady=1)
-        self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
-        self.tree.bind("<ButtonPress-1>", self._on_tree_tap, add="+")
+        self.tree.bind("<<TreeviewSelect>>", lambda e: self._on_tree_select(e, source="tab"))
+        self.tree.bind("<ButtonPress-1>", lambda e: self._on_tree_tap(e, source="tab"), add="+")
+
+    def _build_queue_drawer(self):
+        """Construct the slide-out side drawer container with full-height Treeview, search filter, and editing toolbar."""
+        p = self.drawer_container
+        p.pack_propagate(False)
+
+        # Drawer Card Container
+        self.drawer_card = RoundedCard(p, bg_fill=BG_CARD, border_color=BORDER_SUBTLE, radius=16, pad=10)
+        self.drawer_card.pack(fill="both", expand=True, padx=(4, 0))
+        db = self.drawer_card.body
+
+        # Header: Title + Slate Count + Close Button
+        d_hdr = tk.Frame(db, bg=BG_CARD)
+        d_hdr.pack(fill="x", pady=(0, 4))
+        tk.Label(
+            d_hdr,
+            text="📋 SLATE QUEUE",
+            font=(FONT, 13, "bold"),
+            bg=BG_CARD,
+            fg=ACCENT_RED,
+        ).pack(side="left")
+        self.drawer_count_lbl = tk.Label(
+            d_hdr,
+            text="0 slates in queue",
+            font=(FONT, 11, "bold"),
+            bg=BG_CARD,
+            fg=ACCENT_YELLOW,
+        )
+        self.drawer_count_lbl.pack(side="left", padx=(10, 0))
+        mkbtn(
+            d_hdr,
+            text="Close Drawer ▶",
+            bg=BG_GREY,
+            command=self.close_queue_drawer,
+            padx=10,
+            pady=4,
+        ).pack(side="right")
+
+        # Filter / Search Bar
+        d_filter_bar = tk.Frame(db, bg=BG_CARD)
+        d_filter_bar.pack(fill="x", pady=(2, 4))
+        tk.Label(
+            d_filter_bar,
+            text="SEARCH / FILTER",
+            font=(FONT, 10, "bold"),
+            bg=BG_CARD,
+            fg=TEXT_MUTED,
+        ).pack(side="left", padx=(2, 6))
+        self.queue_filter_var = tk.StringVar()
+        filter_entry = RoundedEntry(d_filter_bar, self.queue_filter_var, 20)
+        filter_entry.pack(side="left", fill="x", expand=True, padx=(0, 6))
+        self.queue_filter_var.trace_add("write", lambda *_: self._refresh_tree(preserve_selection=True))
+        mkbtn(
+            d_filter_bar,
+            text="Clear Filter",
+            bg=BG_GREY,
+            command=lambda: self.queue_filter_var.set(""),
+            padx=8,
+            pady=3,
+        ).pack(side="right")
+
+        # Action Toolbar inside drawer
+        d_bar = tk.Frame(db, bg=BG_CARD)
+        d_bar.pack(fill="x", pady=(2, 4))
+        mkbtn(
+            d_bar,
+            text="Set Output Folder",
+            bg=BG_GREY,
+            command=self.set_output_folder_for_selection,
+            padx=8,
+            pady=4,
+        ).pack(side="left")
+        mkbtn(
+            d_bar,
+            text="Cycle Res",
+            bg=BG_GREY,
+            command=self.cycle_selected_resolution,
+            padx=8,
+            pady=4,
+        ).pack(side="left", padx=(4, 0))
+        mkbtn(
+            d_bar,
+            text="Remove",
+            bg=BG_GREY,
+            command=self.remove_from_batch,
+            padx=8,
+            pady=4,
+        ).pack(side="left", padx=(4, 0))
+        mkbtn(
+            d_bar,
+            text="Clear All",
+            bg=BG_GREY,
+            command=self.clear_batch,
+            padx=8,
+            pady=4,
+        ).pack(side="left", padx=(4, 0))
+
+        # Full-Height Treeview Container with Vertical and Horizontal Scrollbars
+        d_tree_frame = tk.Frame(db, bg=BORDER_SUBTLE, bd=0, highlightthickness=0)
+        d_tree_frame.pack(fill="both", expand=True, pady=(2, 0))
+        d_tree_frame.columnconfigure(0, weight=1)
+        d_tree_frame.rowconfigure(0, weight=1)
+
+        columns = ("id", "title", "res", "trt", "flame", "nfa", "client", "output")
+        self.drawer_tree = ttk.Treeview(d_tree_frame, columns=columns, show="headings")
+        self.drawer_tree.heading("id", text="AD-ID")
+        self.drawer_tree.heading("title", text="TITLE")
+        self.drawer_tree.heading("res", text="COMP / RES (TAP)")
+        self.drawer_tree.heading("trt", text="TRT")
+        self.drawer_tree.heading("flame", text="FLAME")
+        self.drawer_tree.heading("nfa", text="NFA (TAP)")
+        self.drawer_tree.heading("client", text="CLIENT")
+        self.drawer_tree.heading("output", text="OUTPUT FOLDER (TAP)")
+
+        self.drawer_tree.column("id", width=95, minwidth=70, anchor="w")
+        self.drawer_tree.column("title", width=180, minwidth=110, anchor="w", stretch=True)
+        self.drawer_tree.column("res", width=130, minwidth=100, anchor="center")
+        self.drawer_tree.column("trt", width=45, minwidth=35, anchor="center")
+        self.drawer_tree.column("flame", width=48, minwidth=38, anchor="center")
+        self.drawer_tree.column("nfa", width=62, minwidth=48, anchor="center")
+        self.drawer_tree.column("client", width=80, minwidth=65, anchor="w")
+        self.drawer_tree.column("output", width=150, minwidth=100, anchor="w")
+
+        d_vscroll = ttk.Scrollbar(d_tree_frame, orient="vertical", command=self.drawer_tree.yview)
+        d_hscroll = ttk.Scrollbar(d_tree_frame, orient="horizontal", command=self.drawer_tree.xview)
+        self.drawer_tree.configure(yscrollcommand=d_vscroll.set, xscrollcommand=d_hscroll.set)
+
+        self.drawer_tree.grid(row=0, column=0, sticky="nsew", padx=1, pady=1)
+        d_vscroll.grid(row=0, column=1, sticky="ns")
+        d_hscroll.grid(row=1, column=0, sticky="ew")
+
+        self.drawer_tree.bind("<<TreeviewSelect>>", lambda e: self._on_tree_select(e, source="drawer"))
+        self.drawer_tree.bind("<ButtonPress-1>", lambda e: self._on_tree_tap(e, source="drawer"), add="+")
+
+    def toggle_queue_drawer(self):
+        """Toggle visibility of the slide-out slate queue drawer panel."""
+        if self.drawer_open:
+            self.close_queue_drawer()
+        else:
+            self.open_queue_drawer()
+
+    def open_queue_drawer(self):
+        """Slide open the side drawer and expand the window width."""
+        if self.drawer_open:
+            return
+        self.drawer_open = True
+        self.drawer_container.pack(side="right", fill="y", padx=(8, 0))
+        cur_w = self.root.winfo_width()
+        cur_h = self.root.winfo_height()
+        target_w = max(cur_w + self.drawer_width, 1540)
+        self.root.geometry(f"{target_w}x{cur_h}")
+        self.btn_toggle_drawer.config(text="📋 Hide Slate Queue ◀", bg=BG_GREY)
+        self._refresh_tree(preserve_selection=True)
+
+    def close_queue_drawer(self):
+        """Slide closed the side drawer and restore the window width."""
+        if not self.drawer_open:
+            return
+        self.drawer_open = False
+        self.drawer_container.pack_forget()
+        cur_w = self.root.winfo_width()
+        cur_h = self.root.winfo_height()
+        target_w = max(cur_w - self.drawer_width, self.base_width)
+        self.root.geometry(f"{target_w}x{cur_h}")
+        self.btn_toggle_drawer.config(text="📋 View Slate Queue ▶", bg=ACCENT_RED)
+        self._refresh_tree(preserve_selection=True)
 
     def _build_tab_marry(self):
         p = self.tab_marry
@@ -3542,48 +3747,159 @@ class SuperJoyWorkstation:
                 item["nfa"] = shared["nfa"]
         self._refresh_tree(preserve_selection=True)
 
+    def _selected_row_indices(self):
+        """Return list of row indices selected in either the drawer tree or tab tree."""
+        indices = set()
+        if hasattr(self, "drawer_tree"):
+            for s in self.drawer_tree.selection():
+                try:
+                    vals = self.drawer_tree.item(s, "values")
+                    if vals:
+                        for idx, item in enumerate(self.manual_batch_data):
+                            if item.get("id") == vals[0] and format_resolution_label(item.get("aspect", DEFAULT_ASPECT)) == vals[2]:
+                                indices.add(idx)
+                                break
+                    else:
+                        i = self.drawer_tree.index(s)
+                        if 0 <= i < len(self.manual_batch_data):
+                            indices.add(i)
+                except Exception:
+                    pass
+        if hasattr(self, "tree"):
+            for s in self.tree.selection():
+                try:
+                    i = self.tree.index(s)
+                    if 0 <= i < len(self.manual_batch_data):
+                        indices.add(i)
+                except Exception:
+                    pass
+        return sorted(indices)
+
     def _refresh_tree(self, preserve_selection=False):
-        sel_indices = [self.tree.index(s) for s in self.tree.selection()] if preserve_selection else []
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        children = []
-        for slate in self.manual_batch_data:
-            asp = slate.get("aspect", DEFAULT_ASPECT)
-            res_lbl = format_resolution_label(asp)
-            slate["aspect"] = asp
-            slate["comp"] = asp
-            slate["resolution"] = res_lbl
-            flame_disp = "YES" if str(slate.get("flame", "n")).lower() in ("y", "yes", "true", "1") else "NO"
-            nfa_val = str(slate.get("nfa", "")).strip()
-            nfa_disp = "NFA" if (nfa_val and nfa_val.lower() not in ("0", "false", "no", "n")) else "AIR"
-            out_disp = self._format_output_cell(slate)
-            cid = self.tree.insert(
-                "",
-                "end",
-                values=(
-                    slate["id"],
-                    slate["title"],
-                    res_lbl,
-                    slate["trt"],
-                    flame_disp,
-                    nfa_disp,
-                    slate["client"],
-                    out_disp,
-                ),
-            )
-            children.append(cid)
-        for idx in sel_indices:
-            if 0 <= idx < len(children):
-                self.tree.selection_add(children[idx])
+        sel_indices = self._selected_row_indices() if preserve_selection else []
+        filter_term = ""
+        if hasattr(self, "queue_filter_var"):
+            filter_term = self.queue_filter_var.get().strip().lower()
+
+        # Update primary tab tree
+        if hasattr(self, "tree"):
+            for item in self.tree.get_children():
+                self.tree.delete(item)
+            tab_children = []
+            for slate in self.manual_batch_data:
+                asp = slate.get("aspect", DEFAULT_ASPECT)
+                res_lbl = format_resolution_label(asp)
+                slate["aspect"] = asp
+                slate["comp"] = asp
+                slate["resolution"] = res_lbl
+                flame_disp = "YES" if str(slate.get("flame", "n")).lower() in ("y", "yes", "true", "1") else "NO"
+                nfa_val = str(slate.get("nfa", "")).strip()
+                nfa_disp = "NFA" if (nfa_val and nfa_val.lower() not in ("0", "false", "no", "n")) else "AIR"
+                out_disp = self._format_output_cell(slate)
+                cid = self.tree.insert(
+                    "",
+                    "end",
+                    values=(
+                        slate["id"],
+                        slate["title"],
+                        res_lbl,
+                        slate["trt"],
+                        flame_disp,
+                        nfa_disp,
+                        slate["client"],
+                        out_disp,
+                    ),
+                )
+                tab_children.append(cid)
+            for idx in sel_indices:
+                if 0 <= idx < len(tab_children):
+                    self.tree.selection_add(tab_children[idx])
+
+        # Update slide-out drawer tree (supports instant search/filter)
+        if hasattr(self, "drawer_tree"):
+            for item in self.drawer_tree.get_children():
+                self.drawer_tree.delete(item)
+            for idx, slate in enumerate(self.manual_batch_data):
+                asp = slate.get("aspect", DEFAULT_ASPECT)
+                res_lbl = format_resolution_label(asp)
+                flame_disp = "YES" if str(slate.get("flame", "n")).lower() in ("y", "yes", "true", "1") else "NO"
+                nfa_val = str(slate.get("nfa", "")).strip()
+                nfa_disp = "NFA" if (nfa_val and nfa_val.lower() not in ("0", "false", "no", "n")) else "AIR"
+                out_disp = self._format_output_cell(slate)
+
+                if filter_term:
+                    match_fields = [
+                        slate.get("id", ""),
+                        slate.get("title", ""),
+                        res_lbl,
+                        slate.get("client", ""),
+                        out_disp,
+                    ]
+                    if not any(filter_term in f.lower() for f in match_fields):
+                        continue
+
+                dcid = self.drawer_tree.insert(
+                    "",
+                    "end",
+                    values=(
+                        slate["id"],
+                        slate["title"],
+                        res_lbl,
+                        slate["trt"],
+                        flame_disp,
+                        nfa_disp,
+                        slate["client"],
+                        out_disp,
+                    ),
+                )
+                if idx in sel_indices:
+                    self.drawer_tree.selection_add(dcid)
+
         self._update_batch_count()
 
-    def _on_tree_tap(self, e):
-        row_id = self.tree.identify_row(e.y)
-        col_id = self.tree.identify_column(e.x)
+    def _sync_tree_selection(self, idx, source="all"):
+        """Ensure row index selection stays visually mirrored across tab and drawer trees without recursive triggers."""
+        if getattr(self, "_syncing_tree_selection", False):
+            return
+        self._syncing_tree_selection = True
+        try:
+            if source != "tab" and hasattr(self, "tree"):
+                kids = self.tree.get_children()
+                if 0 <= idx < len(kids):
+                    self.tree.selection_set(kids[idx])
+            if source != "drawer" and hasattr(self, "drawer_tree"):
+                kids = self.drawer_tree.get_children()
+                target_slate = self.manual_batch_data[idx] if 0 <= idx < len(self.manual_batch_data) else None
+                if target_slate:
+                    for k in kids:
+                        vals = self.drawer_tree.item(k, "values")
+                        if vals and vals[0] == target_slate.get("id") and vals[2] == format_resolution_label(target_slate.get("aspect", DEFAULT_ASPECT)):
+                            self.drawer_tree.selection_set(k)
+                            break
+        finally:
+            self._syncing_tree_selection = False
+
+    def _on_tree_tap(self, e, source="tab"):
+        tree_obj = self.drawer_tree if source == "drawer" else self.tree
+        row_id = tree_obj.identify_row(e.y)
+        col_id = tree_obj.identify_column(e.x)
         if not row_id:
             return
-        idx = self.tree.index(row_id)
-        self.tree.selection_set(row_id)
+
+        tree_obj.selection_set(row_id)
+        # Identify row in self.manual_batch_data
+        vals = tree_obj.item(row_id, "values")
+        idx = -1
+        if vals:
+            for i, item in enumerate(self.manual_batch_data):
+                if item.get("id") == vals[0] and format_resolution_label(item.get("aspect", DEFAULT_ASPECT)) == vals[2]:
+                    idx = i
+                    break
+        if idx == -1:
+            raw_idx = tree_obj.index(row_id)
+            if 0 <= raw_idx < len(self.manual_batch_data):
+                idx = raw_idx
+
         if 0 <= idx < len(self.manual_batch_data):
             # Single-tap on COMP/RES column (#3) cycles that individual slate's resolution
             if col_id == "#3":
@@ -3611,13 +3927,27 @@ class SuperJoyWorkstation:
             # Single-tap on OUTPUT FOLDER column (#8) opens folder picker for that individual slate
             elif col_id == "#8":
                 self.set_output_folder_for_selection([idx])
-        self._on_tree_select()
 
-    def _on_tree_select(self, _e=None):
-        selected = self.tree.selection()
+        self._on_tree_select(source=source)
+
+    def _on_tree_select(self, _e=None, source="tab"):
+        tree_obj = self.drawer_tree if source == "drawer" else self.tree
+        selected = tree_obj.selection()
         if not selected:
             return
-        idx = self.tree.index(selected[0])
+
+        vals = tree_obj.item(selected[0], "values")
+        idx = -1
+        if vals:
+            for i, item in enumerate(self.manual_batch_data):
+                if item.get("id") == vals[0] and format_resolution_label(item.get("aspect", DEFAULT_ASPECT)) == vals[2]:
+                    idx = i
+                    break
+        if idx == -1:
+            raw_idx = tree_obj.index(selected[0])
+            if 0 <= raw_idx < len(self.manual_batch_data):
+                idx = raw_idx
+
         if 0 <= idx < len(self.manual_batch_data):
             row = self.manual_batch_data[idx]
             self._loading_row = True
@@ -3628,25 +3958,35 @@ class SuperJoyWorkstation:
                 self.f_flame.set(str(row.get("flame", "n")).lower() in ("y", "yes", "true", "1"))
                 nfa_v = str(row.get("nfa", "")).strip()
                 self.f_nfa.set(bool(nfa_v and nfa_v.lower() not in ("0", "false", "no", "n")))
-                sel_aspects = [
-                    self.manual_batch_data[self.tree.index(s)].get("aspect", DEFAULT_ASPECT)
-                    for s in selected
-                    if 0 <= self.tree.index(s) < len(self.manual_batch_data)
-                ]
+
+                sel_aspects = []
+                for s in selected:
+                    s_vals = tree_obj.item(s, "values")
+                    if s_vals:
+                        for item in self.manual_batch_data:
+                            if item.get("id") == s_vals[0] and format_resolution_label(item.get("aspect", DEFAULT_ASPECT)) == s_vals[2]:
+                                sel_aspects.append(item.get("aspect", DEFAULT_ASPECT))
+                                break
+                    else:
+                        s_idx = tree_obj.index(s)
+                        if 0 <= s_idx < len(self.manual_batch_data):
+                            sel_aspects.append(self.manual_batch_data[s_idx].get("aspect", DEFAULT_ASPECT))
+
                 if sel_aspects:
                     self.batch_res_pills.set_selected(sel_aspects)
             finally:
                 self._loading_row = False
 
+            self._sync_tree_selection(idx, source=source)
+
     def cycle_selected_resolution(self):
         """Cycle the resolution (16x9 -> 1x1 -> 4x5 -> 9x16 -> 2x3) of the currently selected slate(s)."""
-        selected = self.tree.selection()
-        if not selected:
+        sel_indices = self._selected_row_indices()
+        if not sel_indices:
             self._alert("showinfo", "Select a Slate", "Tap a slate row in the queue table first (or tap its COMP/RES cell directly).")
             return
         new_aspects = []
-        for s in selected:
-            idx = self.tree.index(s)
+        for idx in sel_indices:
             if 0 <= idx < len(self.manual_batch_data):
                 cur_asp = self.manual_batch_data[idx].get("aspect", DEFAULT_ASPECT)
                 next_asp = ASPECT_KEYS[(ASPECT_KEYS.index(cur_asp) + 1) % len(ASPECT_KEYS)] if cur_asp in ASPECT_KEYS else DEFAULT_ASPECT
@@ -3661,18 +4001,14 @@ class SuperJoyWorkstation:
     def apply_res_to_selected(self):
         """Retroactively change the resolution of selected slate(s), or expand selected spot(s)
         into multiple resolutions at once based on the active SLATE RES pills."""
-        selected = self.tree.selection()
+        sel_indices = self._selected_row_indices()
         target_aspects = self.batch_res_pills.get_selected()
-        if not selected:
+        if not sel_indices:
             self._alert(
                 "showinfo",
                 "Select a Slate",
                 "Select one or more slates in the queue to change or expand their resolution(s).",
             )
-            return
-
-        sel_indices = sorted(self.tree.index(s) for s in selected if 0 <= self.tree.index(s) < len(self.manual_batch_data))
-        if not sel_indices:
             return
 
         if len(target_aspects) == 1:
@@ -3720,10 +4056,10 @@ class SuperJoyWorkstation:
 
         shared = self._current_campaign_fields()
         target_aspects = self.batch_res_pills.get_selected()
-        selected_rows = self.tree.selection()
+        sel_indices = self._selected_row_indices()
 
-        if len(selected_rows) == 1 and len(target_aspects) == 1:
-            sel_idx = self.tree.index(selected_rows[0])
+        if len(sel_indices) == 1 and len(target_aspects) == 1:
+            sel_idx = sel_indices[0]
             if 0 <= sel_idx < len(self.manual_batch_data):
                 existing = self.manual_batch_data[sel_idx]
                 if existing.get("id", "").lower() == raw_id.lower():
@@ -3759,24 +4095,23 @@ class SuperJoyWorkstation:
         self.f_trt.set("")
 
     def remove_from_batch(self):
-        selected = self.tree.selection()
-        for item in reversed(selected):
-            idx = self.tree.index(item)
+        sel_indices = self._selected_row_indices()
+        for idx in reversed(sel_indices):
             if 0 <= idx < len(self.manual_batch_data):
                 del self.manual_batch_data[idx]
-            self.tree.delete(item)
-        self._update_batch_count()
+        self._refresh_tree()
 
     def clear_batch(self):
         self.manual_batch_data.clear()
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        self._update_batch_count()
+        self._refresh_tree()
 
     def _update_batch_count(self):
         n = len(self.manual_batch_data)
-        self.batch_count_lbl.config(text=f"{n} slate{'s' if n != 1 else ''} in queue")
-
+        txt = f"{n} slate{'s' if n != 1 else ''} in queue"
+        if hasattr(self, "batch_count_lbl"):
+            self.batch_count_lbl.config(text=txt)
+        if hasattr(self, "drawer_count_lbl"):
+            self.drawer_count_lbl.config(text=txt)
     # ------------------------------------------------------------------
     # Spreadsheet (.XLSX / .CSV / .TSV) + Master Videos Combining & Renaming
     # ------------------------------------------------------------------
