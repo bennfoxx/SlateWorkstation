@@ -211,7 +211,7 @@ def detect_aspect_from_text(text):
     if not text:
         return None
     m = re.search(
-        r"(?<![0-9])(16\s*[x_:\-]\s*9|1\s*[x_:\-]\s*1|4\s*[x_:\-]\s*5|9\s*[x_:\-]\s*16|2\s*[x_:\-]\s*3)(?![0-9])",
+        r"(?<![0-9])(16\s*[x_:\-]\s*9|1\s*[xX:]\s*1|4\s*[x_:\-]\s*5|9\s*[x_:\-]\s*16|2\s*[xX:]\s*3)(?![0-9])",
         text,
         re.IGNORECASE,
     )
@@ -331,6 +331,12 @@ def normalize_slate_row(raw_row):
     nfa = pick("nfa")
     trt = pick("trt", "duration", "length", "time")
     date_val = pick("day", "date", "air_date", "ship_date")
+    if re.fullmatch(r"\d{5}(\.\d+)?", date_val or ""):  # Excel date serial (e.g. 46310) -> YYYY_MM_DD
+        try:
+            from datetime import timedelta
+            date_val = (datetime(1899, 12, 30) + timedelta(days=int(float(date_val)))).strftime("%Y_%m_%d")
+        except (ValueError, OverflowError):
+            pass
     if not date_val or date_val.upper() in ("YYYY_MM_DD", "YYYY-MM-DD", "MM_DD_YYYY", "MM/DD/YYYY"):
         date_val = today_yyyy_mm_dd()
     workspace = pick("workspace_artist", "workspace", "artist", "editor")
@@ -528,7 +534,7 @@ def wrap_jsx_with_status(jsx_body, status_path):
     """Wrap a generated JSX so any error is caught and a status file is always written
     (osascript returns success even when After Effects throws, so Python reads this file)."""
     return (
-        "var __SJ_STATUS = {ok: false, queued: false, rendered: false, rqItems: 0, error: \"\"};\n"
+        "var __SJ_STATUS = {ok: false, queued: false, rendered: false, rqItems: 0, error: \"\", skipped: \"\"};\n"
         "function __sjErrText(e) {\n"
         "  if (!e) return 'Unknown error';\n"
         "  try { if (typeof e === 'string') return e; } catch (e0) {}\n"
@@ -543,7 +549,8 @@ def wrap_jsx_with_status(jsx_body, status_path):
         "    var errClean = (__SJ_STATUS.error ? __sjErrText(__SJ_STATUS.error) : '').replace(/[\\r\\n]+/g, ' ');\n"
         "    f.write('ok=' + (__SJ_STATUS.ok ? 1 : 0) + '\\nqueued=' + (__SJ_STATUS.queued ? 1 : 0)"
         " + '\\nrendered=' + (__SJ_STATUS.rendered ? 1 : 0)"
-        " + '\\nrq_items=' + __SJ_STATUS.rqItems + '\\nerror=' + errClean + '\\n');\n"
+        " + '\\nrq_items=' + __SJ_STATUS.rqItems + '\\nerror=' + errClean"
+        " + '\\nskipped=' + String(__SJ_STATUS.skipped || '').replace(/[\\r\\n]+/g, ' ') + '\\n');\n"
         "    f.close();\n"
         "  } catch (eW) {}\n"
         "}\n"
@@ -594,6 +601,15 @@ def verify_jsx_status(jsx_path, expect_queue=True):
     return info
 
 
+def skipped_note(info):
+    """Human-readable note listing items the After Effects script skipped (empty string when none)."""
+    sk = (info or {}).get("skipped", "").strip()
+    if not sk:
+        return ""
+    items = [x.strip() for x in sk.split(" | ") if x.strip()]
+    return f"\n\nSKIPPED {len(items)} item(s):\n• " + "\n• ".join(items[:10])
+
+
 def execute_ae_script_file(jsx_path, timeout=3600):
     """Safely run a JSX script in Adobe After Effects using AppleScript DoScript with override.
     Passing the script code directly with 'with override' prevents:
@@ -607,10 +623,12 @@ def execute_ae_script_file(jsx_path, timeout=3600):
     applescript = f'''
     on run argv
         set jsCode to item 1 of argv
-        tell {ae_target}
-            activate
-            DoScript jsCode with override
-        end tell
+        with timeout of {int(timeout)} seconds
+            tell {ae_target}
+                activate
+                DoScript jsCode with override
+            end tell
+        end timeout
     end run
     '''
     return subprocess.run(
@@ -1024,6 +1042,109 @@ def create_beep_wav(path, fps=10.0, freq=1000.0, rate=48000, amp=0.5):
             for i in range(n)
         )
         w.writeframes(frames)
+
+
+def _mp4_atoms(buf, start, end):
+    """Yield (type, payload_start, payload_end) for each atom in buf[start:end]."""
+    pos = start
+    while pos + 8 <= end:
+        size, typ = struct.unpack(">I4s", buf[pos:pos + 8])
+        hdr = 8
+        if size == 1 and pos + 16 <= end:
+            size = struct.unpack(">Q", buf[pos + 8:pos + 16])[0]
+            hdr = 16
+        elif size == 0:
+            size = end - pos
+        if size < hdr or pos + size > end:
+            break
+        yield typ, pos + hdr, pos + size
+        pos += size
+
+
+def read_mov_start_seconds(path):
+    """Return the whole-second start timecode (e.g. 3600 for 01:00:00:00) embedded in a QuickTime/ProRes
+    file's 'tmcd' track, or None when the file has none / is not a QuickTime container."""
+    try:
+        if not path.lower().endswith(".mov"):
+            return None
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            fsize = f.tell()
+            pos = 0
+            moov = None
+            while pos + 8 <= fsize:
+                f.seek(pos)
+                size, typ = struct.unpack(">I4s", f.read(8))
+                if size == 1:
+                    size = struct.unpack(">Q", f.read(8))[0]
+                elif size == 0:
+                    size = fsize - pos
+                if size < 8:
+                    return None
+                if typ == b"moov":
+                    f.seek(pos)
+                    moov = f.read(size)
+                    break
+                pos += size
+            if moov is None:
+                return None
+
+            def find(buf, s, e, *path_types):
+                if not path_types:
+                    return (s, e)
+                for t, ps, pe in _mp4_atoms(buf, s, e):
+                    if t == path_types[0]:
+                        r = find(buf, ps, pe, *path_types[1:])
+                        if r:
+                            return r
+                return None
+
+            for t, ts, te in _mp4_atoms(moov, 8, len(moov)):
+                if t != b"trak":
+                    continue
+                h = find(moov, ts, te, b"mdia", b"hdlr")
+                if not h or moov[h[0] + 8:h[0] + 12] != b"tmcd":
+                    continue
+                stbl = find(moov, ts, te, b"mdia", b"minf", b"stbl")
+                if not stbl:
+                    return None
+                stsd = find(moov, stbl[0], stbl[1], b"stsd")
+                co = None
+                for t2, ps, pe in _mp4_atoms(moov, stbl[0], stbl[1]):
+                    if t2 == b"stco":
+                        co = struct.unpack(">I", moov[ps + 8:ps + 12])[0]
+                    elif t2 == b"co64":
+                        co = struct.unpack(">Q", moov[ps + 8:ps + 16])[0]
+                if not stsd or co is None:
+                    return None
+                # stsd: ver/flags(4) count(4) then entry: size(4) 'tmcd'(4) reserved(6) dref(2) reserved(4) flags(4) ts(4) fdur(4) nframes(1)
+                e0 = stsd[0] + 8
+                flags = struct.unpack(">I", moov[e0 + 8 + 6 + 2 + 4:e0 + 8 + 6 + 2 + 8])[0]
+                nframes = moov[e0 + 8 + 6 + 2 + 16]
+                f.seek(co)
+                frame = struct.unpack(">i", f.read(4))[0]
+                if nframes <= 0 or frame < 0:
+                    return None
+                if flags & 1:  # drop-frame: convert frame count to displayed timecode frame count
+                    base = nframes // 30 or 1
+                    drop = 2 * base
+                    per10 = 17982 * base
+                    per1 = 1798 * base
+                    d, m = divmod(frame, per10)
+                    frame += 9 * drop * d + (drop * ((m - drop) // per1) if m >= drop else 0)
+                return frame // nframes
+    except Exception:
+        return None
+    return None
+
+
+LEADER_START_SECONDS = 3598   # 00:59:58:00 -> 2s black/2-pop leader already on the file
+SLATED_START_SECONDS = 3593   # 00:59:53:00 -> 5s slate + 2s leader already on the file
+
+
+def has_two_pop_leader(path):
+    s = read_mov_start_seconds(path)
+    return s is not None and s == LEADER_START_SECONDS
 
 
 # ---------------------------------------------------------------------------
@@ -3027,8 +3148,8 @@ class SuperJoyWorkstation:
     def _make_slate_entry(shared, ad_id, title, trt, aspect, prev=None):
         prev = prev or {}
         asp = aspect if aspect in ASPECT_RESOLUTIONS else DEFAULT_ASPECT
-        ws = shared["workspace"] or prev.get("workspace", prev.get("workspace_artist", ""))
-        dt = shared["date"] or prev.get("date", prev.get("day", today_yyyy_mm_dd()))
+        ws = prev.get("workspace") or prev.get("workspace_artist") or shared["workspace"]
+        dt = prev.get("date") or prev.get("day") or shared["date"] or today_yyyy_mm_dd()
         prev_flame = str(prev.get("flame", "")).strip().lower()
         if prev_flame in ("y", "yes", "true", "1"):
             flame_val = "y"
@@ -3043,8 +3164,8 @@ class SuperJoyWorkstation:
         else:
             nfa_val = shared.get("nfa", "")
         return {
-            "agency": shared["agency"] or prev.get("agency", "") or DEFAULT_AGENCY,
-            "client": shared["client"] or prev.get("client", ""),
+            "agency": prev.get("agency") or shared["agency"] or DEFAULT_AGENCY,
+            "client": prev.get("client") or shared["client"],
             "title": title,
             "name": prev.get("name") or title,
             "id": ad_id,
@@ -3057,8 +3178,8 @@ class SuperJoyWorkstation:
             "day": dt,
             "workspace": ws,
             "workspace_artist": ws,
-            "audio": shared["audio"] or prev.get("audio", "STEREO"),
-            "copyright": shared["copyright"] or prev.get("copyright", ""),
+            "audio": prev.get("audio") or shared["audio"] or "STEREO",
+            "copyright": prev.get("copyright") or shared["copyright"],
             "flame": flame_val,
             "nfa": nfa_val,
             "output_dir": prev.get("output_dir", ""),
@@ -3150,7 +3271,11 @@ class SuperJoyWorkstation:
 
             for asp in target_aspects:
                 prev = existing_by_key.get((ad_id.lower(), asp)) or existing_by_id.get(ad_id.lower(), {})
-                new_batch.append(self._make_slate_entry(shared, ad_id, title, trt, asp, prev))
+                new_batch.append(
+                    self._make_slate_entry(
+                        shared, ad_id, prev.get("title") or title, prev.get("trt") or trt, asp, prev
+                    )
+                )
 
         self.manual_batch_data = new_batch
         self._refresh_tree()
@@ -3803,9 +3928,18 @@ class SuperJoyWorkstation:
             f"Unslated H.264:  {folders['unslated_h264']}",
             "",
         ]
+        used_marry = {}
         for p in pairs:
             slated_stem = p.get("slated_stem") or os.path.splitext(p["output_name"])[0]
             clean_stem = p.get("clean_stem") or re.sub(r"(?i)[_\-\s]*slated$", "", slated_stem).strip("_- ")
+            if slated_stem in used_marry:
+                used_marry[slated_stem] += 1
+                dup = f"_{used_marry[slated_stem]}"
+                log_lines.append(f"[WARNING] Duplicate output name '{slated_stem}' — renamed with '{dup}'")
+                slated_stem += dup
+                clean_stem += dup
+            else:
+                used_marry[slated_stem] = 1
             slated_prores_out = os.path.join(folders["slated_prores"], f"{slated_stem}.mov")
             slated_h264_out = os.path.join(folders["slated_h264"], f"{slated_stem}.mp4") if auto_transcode else ""
             unslated_prores_out = os.path.join(folders["unslated_prores"], f"{clean_stem}.mov") if auto_transcode else ""
@@ -3816,6 +3950,7 @@ class SuperJoyWorkstation:
                     "id": p["id"],
                     "slate_path": p["slate_path"],
                     "video_path": p["video_path"],
+                    "has_leader": has_two_pop_leader(p["video_path"]),
                     "final_output": slated_prores_out,
                     "slated_prores_output": slated_prores_out,
                     "slated_h264_output": slated_h264_out,
@@ -3842,7 +3977,7 @@ class SuperJoyWorkstation:
 
         try:
             execute_ae_script_file(jsx_path)
-            verify_jsx_status(jsx_path)
+            msg_skip = skipped_note(verify_jsx_status(jsx_path))
             msg = (
                 f"Married {len(marry_jobs)} existing slate(s) + master video(s) and queued in AME!\n\n"
                 f"Folders Created:\n"
@@ -3850,7 +3985,7 @@ class SuperJoyWorkstation:
                 f"• {folders['slated_h264']}\n"
                 f"• {folders['unslated_prores']}\n"
                 f"• {folders['unslated_h264']}\n\n"
-                f"Editable Project:\n{aep_marry_path}"
+                f"Editable Project:\n{aep_marry_path}" + msg_skip
             )
             self.root.after(0, lambda: self._alert("showinfo", "Marry Complete", msg))
         except subprocess.CalledProcessError as e:
@@ -3958,6 +4093,14 @@ class SuperJoyWorkstation:
             }}
         }}
 
+        // Never silently discard the user's open work: save a file-backed project, refuse an unsaved one.
+        if (app.project && app.project.numItems > 0) {{
+            if (app.project.file) {{
+                app.project.save();
+            }} else {{
+                throw new Error("After Effects has an unsaved project open. Save or close it, then run again.");
+            }}
+        }}
         try {{
             if (app.project) {{
                 app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
@@ -3969,6 +4112,7 @@ class SuperJoyWorkstation:
         app.newProject();
         app.beginUndoGroup("Batch Marry Existing Slates + Videos");
 
+        var skipped = [];
         var masterFolder = app.project.items.addFolder("Married Slated Comps");
         var unslatedFolder = app.project.items.addFolder("Unslated Master Comps");
         var assetsFolder = app.project.items.addFolder("Imported Slates & Masters");
@@ -3997,7 +4141,7 @@ class SuperJoyWorkstation:
             var job = jobs[i];
             var slateFile = new File(job.slate_path);
             var vidFile = new File(job.video_path);
-            if (!slateFile.exists || !vidFile.exists) continue;
+            if (!slateFile.exists || !vidFile.exists) {{ skipped.push((job.id || job.comp_name) + " (slate or video file not found)"); continue; }}
 
             var slateItem = app.project.importFile(new ImportOptions(slateFile));
             slateItem.parentFolder = assetsFolder;
@@ -4008,7 +4152,7 @@ class SuperJoyWorkstation:
             var compH = vidItem.height > 0 ? vidItem.height : (slateItem.height > 0 ? slateItem.height : cfg.height);
             var compFps = vidItem.frameRate > 0 ? vidItem.frameRate : (slateItem.frameRate > 0 ? slateItem.frameRate : cfg.fps);
             var nominalFps = Math.round(compFps);
-            var videoHas2Pop = hasTwoPopLeader(vidItem, compFps);
+            var videoHas2Pop = (job.has_leader === true);
 
             var slateFrames = Math.round(5.0 * nominalFps);
             var slateDuration = slateFrames / compFps;
@@ -4019,13 +4163,13 @@ class SuperJoyWorkstation:
                 // Video already starts at 00:59:58:00 (has 2-pop + 2s black leader with picture at 01:00:00:00).
                 // Prepend only the 5.0s slate so master comp starts at 00:59:53:00 and picture lands at 01:00:00:00.
                 headDuration = slateDuration;
-                totalDuration = headDuration + vidItem.duration;
+                totalDuration = Math.round((headDuration + vidItem.duration) * compFps) / compFps;
             }} else {{
                 // Video starts at 01:00:00:00 (clean master with no 2-pop leader).
                 // Add standard 7.0s leader: 5.0s slate + 2-pop + 2.0s black.
                 var headFrames = Math.round(7.0 * nominalFps);
                 headDuration = headFrames / compFps;
-                totalDuration = headDuration + vidItem.duration;
+                totalDuration = Math.round((headDuration + vidItem.duration) * compFps) / compFps;
             }}
 
             var masterComp = app.project.items.addComp(job.comp_name, compW, compH, 1.0, totalDuration, compFps);
@@ -4104,6 +4248,7 @@ class SuperJoyWorkstation:
 
         var aepFile = new File({json.dumps(aep_path)});
         app.project.save(aepFile);
+        __SJ_STATUS.skipped = skipped.join(" | ");
         var queued = false, lastErr = "";
         __SJ_STATUS.rqItems = app.project.renderQueue.numItems;
         for (var qa = 0; qa < 4 && !queued; qa++) {{
@@ -4259,9 +4404,20 @@ class SuperJoyWorkstation:
             "",
         ]
 
+        skipped_unslate = []
         for fname in files:
             src = os.path.join(folder, fname)
             stem, _ = os.path.splitext(fname)
+            # Only trim files that are actually slated: embedded start TC 00:59:53:00, or a '_Slated' name
+            # when the file carries no readable timecode. Anything else would lose 7s of real picture.
+            tc_start = read_mov_start_seconds(src)
+            name_slated = re.search(r"(?i)slated?$", stem) is not None
+            if tc_start is not None and tc_start != SLATED_START_SECONDS:
+                skipped_unslate.append(f"{fname} (start TC is not 00:59:53:00 — does not look slated)")
+                continue
+            if tc_start is None and not name_slated:
+                skipped_unslate.append(f"{fname} (no slate timecode and name does not end in 'Slated')")
+                continue
             clean_stem = re.sub(r"(?i)[_\-\s]*slated$", "", stem).strip("_- ") or f"{stem}_Unslated"
             prores_dst = os.path.join(folders["unslated_prores"], f"{clean_stem}.mov")
             h264_dst = os.path.join(folders["unslated_h264"], f"{clean_stem}.mp4") if auto_transcode else ""
@@ -4280,11 +4436,19 @@ class SuperJoyWorkstation:
                 + f" (trim first {UNSLATE_SECONDS:.1f}s)"
             )
 
+        for sk in skipped_unslate:
+            log_lines.append(f"[SKIPPED] {sk}")
         try:
             with open(log_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(log_lines))
         except OSError:
             pass
+
+        if not unslate_jobs:
+            self.root.after(0, lambda: self._alert("showwarning", "Nothing To Un-Slate",
+                "No file looked slated, so nothing was queued:\n\n" + "\n".join(skipped_unslate[:12])))
+            self.root.after(0, self.reset_ui)
+            return
 
         self.write_unslate_jsx(jsx_path, unslate_jobs, aep_unslate_path, settings)
 
@@ -4293,13 +4457,15 @@ class SuperJoyWorkstation:
 
         try:
             execute_ae_script_file(jsx_path)
-            verify_jsx_status(jsx_path)
+            msg_skip = skipped_note(verify_jsx_status(jsx_path))
             msg = (
                 f"Queued {len(unslate_jobs)} un-slated spot(s) in Adobe Media Encoder!\n\n"
                 f"Output Folders:\n"
                 f"• {folders['unslated_prores']}\n"
                 f"• {folders['unslated_h264']}\n\n"
-                f"Editable Project (for manual checks/fixes):\n{aep_unslate_path}"
+                f"Editable Project (for manual checks/fixes):\n{aep_unslate_path}" + msg_skip
+                + (f"\n\nSkipped {len(skipped_unslate)} file(s) that did not look slated:\n"
+                   + "\n".join(skipped_unslate[:8]) if skipped_unslate else "")
             )
             self.root.after(0, lambda: self._alert("showinfo", "Un-Slate Queued in AME", msg))
         except subprocess.CalledProcessError as e:
@@ -4382,6 +4548,14 @@ class SuperJoyWorkstation:
             }}
         }}
 
+        // Never silently discard the user's open work: save a file-backed project, refuse an unsaved one.
+        if (app.project && app.project.numItems > 0) {{
+            if (app.project.file) {{
+                app.project.save();
+            }} else {{
+                throw new Error("After Effects has an unsaved project open. Save or close it, then run again.");
+            }}
+        }}
         try {{
             if (app.project) {{
                 app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
@@ -4462,9 +4636,7 @@ class SuperJoyWorkstation:
 
         app.endUndoGroup();
 
-        if (skipped.length) {{
-            alert("Skipped during Un-Slate:\\n" + skipped.join("\\n"));
-        }}
+        __SJ_STATUS.skipped = skipped.join(" | ");
 
         var aepFile = new File({json.dumps(aep_path)});
         app.project.save(aepFile);
@@ -4603,6 +4775,7 @@ class SuperJoyWorkstation:
 
         previews_dir = os.path.join(output_dir, "_previews")
         os.makedirs(previews_dir, exist_ok=True)
+        used_stems = {}
 
         for raw_data in batch_data:
             data = normalize_slate_row(raw_data)
@@ -4675,6 +4848,14 @@ class SuperJoyWorkstation:
                 if not matched_video:
                     matched_video = os.path.join(videos_dir, candidates[0])
 
+            if matched_video and len(candidates) > 1 and not (
+                target_aspect and any(detect_aspect_from_text(v) == target_aspect for v in candidates)
+            ):
+                log_entries.append(
+                    f"[WARNING] {ad_id}: {len(candidates)} master files match; used "
+                    f"{os.path.basename(matched_video)} (others: {', '.join(c for c in candidates if c != os.path.basename(matched_video))})"
+                )
+
             if not matched_video:
                 log_entries.append(
                     f"[ERROR] ID: {ad_id} | Title: {title} | No matching master video found in video folder."
@@ -4688,6 +4869,14 @@ class SuperJoyWorkstation:
             clean_stem = build_canonical_delivery_stem(
                 data, target_aspect=target_aspect, include_aspect=multi_aspect, suffix=""
             )
+            if out_stem in used_stems:
+                used_stems[out_stem] += 1
+                suffix_n = f"_{used_stems[out_stem]}"
+                log_entries.append(f"[WARNING] Duplicate output name '{out_stem}' — renamed with '{suffix_n}'")
+                out_stem += suffix_n
+                clean_stem += suffix_n
+            else:
+                used_stems[out_stem] = 1
             slated_prores_file = os.path.join(row_folders["slated_prores"], f"{out_stem}.mov")
             slated_h264_file = (
                 os.path.join(row_folders["slated_h264"], f"{out_stem}.mp4") if auto_transcode else ""
@@ -4702,6 +4891,7 @@ class SuperJoyWorkstation:
 
             job_entry = {
                 "video_path": matched_video,
+                "has_leader": has_two_pop_leader(matched_video),
                 "slate_only": False,
                 "final_output": slated_prores_file,
                 "slated_prores_output": slated_prores_file,
@@ -4797,7 +4987,7 @@ class SuperJoyWorkstation:
             msg = (
                 f"Successfully generated {mode_desc} ({success_count} spot(s)) and {action_desc}!\n\n"
                 f"Delivery Folders:\n{folder_summary}\n\n"
-                f"Review log at:\n{log_path}"
+                f"Review log at:\n{log_path}" + skipped_note(status_info)
             )
             self.root.after(0, lambda: self._alert("showinfo", "Complete", msg))
         except subprocess.CalledProcessError as e:
@@ -5278,6 +5468,14 @@ open "{primary_target}"
             }}
         }}
 
+        // Never silently discard the user's open work: save a file-backed project, refuse an unsaved one.
+        if (app.project && app.project.numItems > 0) {{
+            if (app.project.file) {{
+                app.project.save();
+            }} else {{
+                throw new Error("After Effects has an unsaved project open. Save or close it, then run again.");
+            }}
+        }}
         try {{
             if (app.project) {{
                 app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
@@ -5380,6 +5578,12 @@ open "{primary_target}"
 
             if (slateComp) {{
                 populateSlateComp(slateComp, job, solidComps);
+                if (isSlateOnly && cfg.fps > 0 && Math.abs(slateComp.frameRate - cfg.fps) > 0.001) {{
+                    try {{ slateComp.frameRate = cfg.fps; }} catch (eFr) {{}}
+                }}
+            }}
+            if (!isSlateOnly && vidItem && job.aspect && vidAspect !== job.aspect) {{
+                skipped.push(slateId + " (WARNING: spreadsheet says " + job.aspect + " but master video is " + vidAspect + " — slate will be scaled to fit)");
             }}
 
             // Standalone Slate Only mode: queue the populated slateComp to ProRes (.mov)
@@ -5400,7 +5604,7 @@ open "{primary_target}"
             var compH = (vidItem.height > 0) ? vidItem.height : (job.height ? job.height : cfg.height);
             var compFps = vidItem.frameRate > 0 ? vidItem.frameRate : cfg.fps;
             var nominalFps = Math.round(compFps);
-            var videoHas2Pop = hasTwoPopLeader(vidItem, compFps);
+            var videoHas2Pop = (job.has_leader === true);
 
             var slateFrames = Math.round(5.0 * nominalFps);
             var slateDuration = slateFrames / compFps;
@@ -5411,13 +5615,13 @@ open "{primary_target}"
                 // Video already starts at 00:59:58:00 (has 2-pop + 2s black leader with picture at 01:00:00:00).
                 // Prepend only the 5.0s slate so master comp starts at 00:59:53:00 and picture lands at 01:00:00:00.
                 headDuration = slateDuration;
-                totalDuration = headDuration + vidItem.duration;
+                totalDuration = Math.round((headDuration + vidItem.duration) * compFps) / compFps;
             }} else {{
                 // Video starts at 01:00:00:00 (clean master with no 2-pop leader).
                 // Add standard 7.0s leader: 5.0s slate + 2-pop + 2.0s black.
                 var headFrames = Math.round(7.0 * nominalFps);
                 headDuration = headFrames / compFps;
-                totalDuration = headDuration + vidItem.duration;
+                totalDuration = Math.round((headDuration + vidItem.duration) * compFps) / compFps;
             }}
 
             var compName = job.aspect ? (slateId + "_" + job.aspect + "_SLATED") : (slateId + "_SLATED");
@@ -5495,7 +5699,7 @@ open "{primary_target}"
                 }}
                 cleanLayer.property("Scale").setValue([100, 100]);
                 queueProResAndH264(
-                    unslatedComp,
+                    cleanComp,
                     job.unslated_prores_output || "",
                     job.unslated_h264_output || ""
                 );
@@ -5504,7 +5708,7 @@ open "{primary_target}"
 
         app.endUndoGroup();
 
-        if (skipped.length) {{ alert("Skipped (no matching slate template):\\n" + skipped.join("\\n")); }}
+        __SJ_STATUS.skipped = skipped.join(" | ");
         var aepFile = new File({json.dumps(aep_path)});
         app.project.save(aepFile);
         __SJ_STATUS.rqItems = app.project.renderQueue.numItems;
