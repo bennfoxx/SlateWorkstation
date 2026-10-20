@@ -697,16 +697,20 @@ def resolve_path_input(raw_path):
 
 
 def create_flat_slate_folder(out_dir):
-    """Standalone slates: a single flat output folder (.mov only, no ProRes/h264 subfolders)."""
+    """Standalone slates: a single flat output folder (.mov slates only in the root).
+    All project assets, AEP, presets, and logs are kept in a dedicated '_Project_Files' subfolder."""
     out_dir = resolve_path_input(out_dir)
     os.makedirs(out_dir, exist_ok=True)
+    proj_files_dir = os.path.join(out_dir, "_Project_Files")
+    os.makedirs(proj_files_dir, exist_ok=True)
     return {
         "base": out_dir,
         "slated_prores": out_dir,
         "slated_h264": "",
         "unslated_prores": "",
         "unslated_h264": "",
-        "presets_dir": os.path.join(out_dir, "_AME_Presets"),
+        "presets_dir": os.path.join(proj_files_dir, "AME_Presets"),
+        "project_dir": proj_files_dir,
     }
 
 
@@ -4197,6 +4201,13 @@ class SuperJoyWorkstation:
         try:
             execute_ae_script_file(jsx_path)
             msg_skip = skipped_note(verify_jsx_status(jsx_path))
+            try:
+                if os.path.isfile(jsx_path):
+                    os.remove(jsx_path)
+                if os.path.isfile(jsx_path + ".status"):
+                    os.remove(jsx_path + ".status")
+            except OSError:
+                pass
             msg = (
                 f"Married {len(marry_jobs)} existing slate(s) + master video(s) and queued in AME!\n\n"
                 f"Folders Created:\n"
@@ -4677,6 +4688,13 @@ class SuperJoyWorkstation:
         try:
             execute_ae_script_file(jsx_path)
             msg_skip = skipped_note(verify_jsx_status(jsx_path))
+            try:
+                if os.path.isfile(jsx_path):
+                    os.remove(jsx_path)
+                if os.path.isfile(jsx_path + ".status"):
+                    os.remove(jsx_path + ".status")
+            except OSError:
+                pass
             msg = (
                 f"Queued {len(unslate_jobs)} un-slated spot(s) in Adobe Media Encoder!\n\n"
                 f"Output Folders:\n"
@@ -4950,14 +4968,17 @@ class SuperJoyWorkstation:
         render_cfg["auto_transcode"] = auto_transcode
         render_cfg["slates_only"] = bool(slates_only)
 
-        log_path = os.path.join(output_dir, "Slating_Results_Log.txt")
+        # In Standalone Slates mode, place all supporting assets (AEP, presets, previews, wav, log, temp scripts)
+        # in the dedicated '_Project_Files' folder so only the .mov slates + '_Project_Files' exist at root.
+        support_dir = folders.get("project_dir", output_dir) if slates_only else output_dir
+        log_path = os.path.join(support_dir, "Slating_Results_Log.txt")
         theme_cfg = getattr(self, "theme_cfg", THEMES.get(ACTIVE_THEME, THEMES["superjoy"]))
         pfx = theme_cfg.get("project_prefix", "SuperJoy")
         hdr_brand = theme_cfg.get("header_title_bold", "SUPERJOY")
         default_proj = f"{pfx}_Standalone_Slates.aep" if slates_only else f"{pfx}_Master_Slates.aep"
         proj_filename = f"{workspace_token}_SLATES.aep" if workspace_token else default_proj
-        aep_master_path = os.path.join(output_dir, proj_filename)
-        beep_path = os.path.join(output_dir, "_2pop_1kHz_1frame.wav")
+        aep_master_path = os.path.join(support_dir, proj_filename)
+        beep_path = os.path.join(support_dir, "_2pop_1kHz_1frame.wav")
         log_entries = [
             f"{hdr_brand} AE/AME {'STANDALONE SLATES' if slates_only else 'SLATING + H.264 TRANSCODE'} RESULTS LOG",
             "=" * 64,
@@ -4965,6 +4986,8 @@ class SuperJoyWorkstation:
             f"Output Root:     {output_dir}",
             f"Slated ProRes:   {folders['slated_prores']}",
         ]
+        if slates_only:
+            log_entries.append(f"Project Files:   {support_dir}")
         if not slates_only:
             log_entries.append(f"Slated H.264:    {folders['slated_h264']}")
         if not slates_only and auto_transcode:
@@ -4992,7 +5015,7 @@ class SuperJoyWorkstation:
                 vf for vf in os.listdir(videos_dir) if vf.lower().endswith(VALID_EXTS) and not vf.startswith(".")
             )
 
-        previews_dir = os.path.join(output_dir, "_previews")
+        previews_dir = os.path.join(support_dir, "_previews")
         os.makedirs(previews_dir, exist_ok=True)
         used_stems = {}
 
@@ -5151,7 +5174,7 @@ class SuperJoyWorkstation:
             return
 
         create_beep_wav(beep_path)  # long enough for any rate; JSX trims it to 1 frame
-        jsx_path = os.path.join(output_dir, "_temp_ae_build.jsx")
+        jsx_path = os.path.join(support_dir, "_temp_ae_build.jsx")
         self.write_jsx(jsx_path, ae_jobs, aep_master_path, beep_path, render_cfg, templates)
 
         if not slates_only:
@@ -5161,6 +5184,13 @@ class SuperJoyWorkstation:
         try:
             execute_ae_script_file(jsx_path)
             status_info = verify_jsx_status(jsx_path)
+            try:
+                if os.path.isfile(jsx_path):
+                    os.remove(jsx_path)
+                if os.path.isfile(jsx_path + ".status"):
+                    os.remove(jsx_path + ".status")
+            except OSError:
+                pass
 
             # Generate static first-frame preview PNGs for in-app preview viewer using macOS native Quick Look
             created_previews = []
