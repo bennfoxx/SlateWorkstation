@@ -11,10 +11,12 @@ import shutil
 import ctypes
 import struct
 import zipfile
+import tempfile
 import threading
 import subprocess
+import urllib.parse
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timedelta
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
@@ -333,7 +335,6 @@ def normalize_slate_row(raw_row):
     date_val = pick("day", "date", "air_date", "ship_date")
     if re.fullmatch(r"\d{5}(\.\d+)?", date_val or ""):  # Excel date serial (e.g. 46310) -> YYYY_MM_DD
         try:
-            from datetime import timedelta
             date_val = (datetime(1899, 12, 30) + timedelta(days=int(float(date_val)))).strftime("%Y_%m_%d")
         except (ValueError, OverflowError):
             pass
@@ -2119,8 +2120,8 @@ class SlatePreviewViewer(tk.Toplevel):
                 pass
 
         # Use macOS built-in /usr/bin/sips to probe source dimensions and downscale cleanly
-        import tempfile
-        out_thumb = tempfile.mktemp(prefix="sj_prev_", suffix=".png")
+        fd, out_thumb = tempfile.mkstemp(prefix="sj_prev_", suffix=".png")
+        os.close(fd)
         try:
             # Query source width & height using sips
             dim_res = subprocess.run(
@@ -2151,9 +2152,24 @@ class SlatePreviewViewer(tk.Toplevel):
             return photo
         except Exception:
             try:
+                if os.path.isfile(out_thumb):
+                    os.remove(out_thumb)
+            except OSError:
+                pass
+            try:
                 return tk.PhotoImage(file=src_path)
             except Exception:
                 return None
+
+    def destroy(self):
+        for thumb_path in list(getattr(self, "_thumb_cache", {}).values()):
+            try:
+                if thumb_path and os.path.isfile(thumb_path):
+                    os.remove(thumb_path)
+            except OSError:
+                pass
+        self._thumb_cache.clear()
+        super().destroy()
 
     def _open_containing_folder(self):
         if not self.preview_items:
@@ -3628,10 +3644,7 @@ class SuperJoyWorkstation:
     def set_output_folder_for_selection(self, row_indices=None):
         """Set the output folder for selected individual slate(s), or for the entire batch if none selected."""
         if row_indices is None:
-            selected = self.tree.selection()
-            row_indices = [
-                self.tree.index(s) for s in selected if 0 <= self.tree.index(s) < len(self.manual_batch_data)
-            ]
+            row_indices = self._selected_row_indices()
 
         def _pick():
             reset_tk_mouse_state(self.root)
@@ -3748,32 +3761,42 @@ class SuperJoyWorkstation:
                 item["nfa"] = shared["nfa"]
         self._refresh_tree(preserve_selection=True)
 
+    def _tree_item_to_index(self, tree_obj, item_id):
+        """Resolve a Treeview item ID directly to its 0-based index in self.manual_batch_data."""
+        if not item_id:
+            return -1
+        try:
+            idx = int(item_id)
+            if 0 <= idx < len(self.manual_batch_data):
+                return idx
+        except (ValueError, TypeError):
+            pass
+        try:
+            vals = tree_obj.item(item_id, "values")
+            if vals:
+                for i, item in enumerate(self.manual_batch_data):
+                    if item.get("id") == vals[0] and format_resolution_label(item.get("aspect", DEFAULT_ASPECT)) == vals[2]:
+                        return i
+            raw_idx = tree_obj.index(item_id)
+            if 0 <= raw_idx < len(self.manual_batch_data):
+                return raw_idx
+        except Exception:
+            pass
+        return -1
+
     def _selected_row_indices(self):
         """Return list of row indices selected in either the drawer tree or tab tree."""
         indices = set()
         if hasattr(self, "drawer_tree"):
             for s in self.drawer_tree.selection():
-                try:
-                    vals = self.drawer_tree.item(s, "values")
-                    if vals:
-                        for idx, item in enumerate(self.manual_batch_data):
-                            if item.get("id") == vals[0] and format_resolution_label(item.get("aspect", DEFAULT_ASPECT)) == vals[2]:
-                                indices.add(idx)
-                                break
-                    else:
-                        i = self.drawer_tree.index(s)
-                        if 0 <= i < len(self.manual_batch_data):
-                            indices.add(i)
-                except Exception:
-                    pass
+                idx = self._tree_item_to_index(self.drawer_tree, s)
+                if 0 <= idx < len(self.manual_batch_data):
+                    indices.add(idx)
         if hasattr(self, "tree"):
             for s in self.tree.selection():
-                try:
-                    i = self.tree.index(s)
-                    if 0 <= i < len(self.manual_batch_data):
-                        indices.add(i)
-                except Exception:
-                    pass
+                idx = self._tree_item_to_index(self.tree, s)
+                if 0 <= idx < len(self.manual_batch_data):
+                    indices.add(idx)
         return sorted(indices)
 
     def _refresh_tree(self, preserve_selection=False):
@@ -3789,8 +3812,7 @@ class SuperJoyWorkstation:
             if hasattr(self, "tree"):
                 for item in self.tree.get_children():
                     self.tree.delete(item)
-                tab_children = []
-                for slate in self.manual_batch_data:
+                for idx, slate in enumerate(self.manual_batch_data):
                     asp = slate.get("aspect", DEFAULT_ASPECT)
                     res_lbl = format_resolution_label(asp)
                     slate["aspect"] = asp
@@ -3800,9 +3822,11 @@ class SuperJoyWorkstation:
                     nfa_val = str(slate.get("nfa", "")).strip()
                     nfa_disp = "NFA" if (nfa_val and nfa_val.lower() not in ("0", "false", "no", "n")) else "AIR"
                     out_disp = self._format_output_cell(slate)
-                    cid = self.tree.insert(
+                    cid = str(idx)
+                    self.tree.insert(
                         "",
                         "end",
+                        iid=cid,
                         values=(
                             slate["id"],
                             slate["title"],
@@ -3814,10 +3838,8 @@ class SuperJoyWorkstation:
                             out_disp,
                         ),
                     )
-                    tab_children.append(cid)
-                for idx in sel_indices:
-                    if 0 <= idx < len(tab_children):
-                        self.tree.selection_add(tab_children[idx])
+                    if idx in sel_indices:
+                        self.tree.selection_add(cid)
 
             # Update slide-out drawer tree (supports instant search/filter)
             if hasattr(self, "drawer_tree"):
@@ -3842,9 +3864,11 @@ class SuperJoyWorkstation:
                         if not any(filter_term in f.lower() for f in match_fields):
                             continue
 
-                    dcid = self.drawer_tree.insert(
+                    dcid = str(idx)
+                    self.drawer_tree.insert(
                         "",
                         "end",
+                        iid=dcid,
                         values=(
                             slate["id"],
                             slate["title"],
@@ -3863,27 +3887,24 @@ class SuperJoyWorkstation:
         finally:
             self._suppress_tree_events = old_suppress
 
-    def _sync_tree_selection(self, idx, source="all"):
+    def _sync_tree_selection(self, indices, source="all"):
         """Ensure row index selection stays visually mirrored across tab and drawer trees without recursive triggers."""
         if getattr(self, "_syncing_tree_selection", False):
             return
+        if isinstance(indices, int):
+            indices = [indices]
         self._syncing_tree_selection = True
         old_suppress = getattr(self, "_suppress_tree_events", False)
         self._suppress_tree_events = True
         try:
             if source != "tab" and hasattr(self, "tree"):
-                kids = self.tree.get_children()
-                if 0 <= idx < len(kids):
-                    self.tree.selection_set(kids[idx])
+                existing_kids = set(self.tree.get_children())
+                target_ids = [str(i) for i in indices if str(i) in existing_kids]
+                self.tree.selection_set(target_ids)
             if source != "drawer" and hasattr(self, "drawer_tree"):
-                kids = self.drawer_tree.get_children()
-                target_slate = self.manual_batch_data[idx] if 0 <= idx < len(self.manual_batch_data) else None
-                if target_slate:
-                    for k in kids:
-                        vals = self.drawer_tree.item(k, "values")
-                        if vals and vals[0] == target_slate.get("id") and vals[2] == format_resolution_label(target_slate.get("aspect", DEFAULT_ASPECT)):
-                            self.drawer_tree.selection_set(k)
-                            break
+                existing_kids = set(self.drawer_tree.get_children())
+                target_ids = [str(i) for i in indices if str(i) in existing_kids]
+                self.drawer_tree.selection_set(target_ids)
         finally:
             self._suppress_tree_events = old_suppress
             self._syncing_tree_selection = False
@@ -3895,28 +3916,16 @@ class SuperJoyWorkstation:
         if not row_id:
             return
 
-        old_suppress = getattr(self, "_suppress_tree_events", False)
-        self._suppress_tree_events = True
-        try:
-            tree_obj.selection_set(row_id)
-        finally:
-            self._suppress_tree_events = old_suppress
+        idx = self._tree_item_to_index(tree_obj, row_id)
+        is_cell_action = col_id in ("#3", "#5", "#6", "#8")
 
-        # Identify row in self.manual_batch_data
-        vals = tree_obj.item(row_id, "values")
-        idx = -1
-        if vals:
-            for i, item in enumerate(self.manual_batch_data):
-                if item.get("id") == vals[0] and format_resolution_label(item.get("aspect", DEFAULT_ASPECT)) == vals[2]:
-                    idx = i
-                    break
-        if idx == -1:
+        if is_cell_action:
+            old_suppress = getattr(self, "_suppress_tree_events", False)
+            self._suppress_tree_events = True
             try:
-                raw_idx = tree_obj.index(row_id)
-                if 0 <= raw_idx < len(self.manual_batch_data):
-                    idx = raw_idx
-            except Exception:
-                pass
+                tree_obj.selection_set(row_id)
+            finally:
+                self._suppress_tree_events = old_suppress
 
         if 0 <= idx < len(self.manual_batch_data):
             # Single-tap on COMP/RES column (#3) cycles that individual slate's resolution
@@ -3946,7 +3955,9 @@ class SuperJoyWorkstation:
             elif col_id == "#8":
                 self.set_output_folder_for_selection([idx])
 
-        self._on_tree_select(source=source)
+        if is_cell_action:
+            self._on_tree_select(source=source)
+            return "break"
 
     def _on_tree_select(self, _e=None, source="tab"):
         if getattr(self, "_suppress_tree_events", False) or getattr(self, "_loading_row", False):
@@ -3957,54 +3968,29 @@ class SuperJoyWorkstation:
         if not selected:
             return
 
-        vals = tree_obj.item(selected[0], "values")
-        idx = -1
-        if vals:
-            for i, item in enumerate(self.manual_batch_data):
-                if item.get("id") == vals[0] and format_resolution_label(item.get("aspect", DEFAULT_ASPECT)) == vals[2]:
-                    idx = i
-                    break
-        if idx == -1:
-            try:
-                raw_idx = tree_obj.index(selected[0])
-                if 0 <= raw_idx < len(self.manual_batch_data):
-                    idx = raw_idx
-            except Exception:
-                pass
+        sel_indices = [self._tree_item_to_index(tree_obj, s) for s in selected]
+        sel_indices = [i for i in sel_indices if 0 <= i < len(self.manual_batch_data)]
+        if not sel_indices:
+            return
 
-        if 0 <= idx < len(self.manual_batch_data):
-            row = self.manual_batch_data[idx]
-            self._loading_row = True
-            try:
-                self.f_id.set(row.get("id", ""))
-                self.f_title.set(row.get("title", ""))
-                self.f_trt.set(row.get("trt", ""))
-                self.f_flame.set(str(row.get("flame", "n")).lower() in ("y", "yes", "true", "1"))
-                nfa_v = str(row.get("nfa", "")).strip()
-                self.f_nfa.set(bool(nfa_v and nfa_v.lower() not in ("0", "false", "no", "n")))
+        idx = sel_indices[0]
+        row = self.manual_batch_data[idx]
+        self._loading_row = True
+        try:
+            self.f_id.set(row.get("id", ""))
+            self.f_title.set(row.get("title", ""))
+            self.f_trt.set(row.get("trt", ""))
+            self.f_flame.set(str(row.get("flame", "n")).lower() in ("y", "yes", "true", "1"))
+            nfa_v = str(row.get("nfa", "")).strip()
+            self.f_nfa.set(bool(nfa_v and nfa_v.lower() not in ("0", "false", "no", "n")))
 
-                sel_aspects = []
-                for s in selected:
-                    s_vals = tree_obj.item(s, "values")
-                    if s_vals:
-                        for item in self.manual_batch_data:
-                            if item.get("id") == s_vals[0] and format_resolution_label(item.get("aspect", DEFAULT_ASPECT)) == s_vals[2]:
-                                sel_aspects.append(item.get("aspect", DEFAULT_ASPECT))
-                                break
-                    else:
-                        try:
-                            s_idx = tree_obj.index(s)
-                            if 0 <= s_idx < len(self.manual_batch_data):
-                                sel_aspects.append(self.manual_batch_data[s_idx].get("aspect", DEFAULT_ASPECT))
-                        except Exception:
-                            pass
+            sel_aspects = [self.manual_batch_data[i].get("aspect", DEFAULT_ASPECT) for i in sel_indices]
+            if sel_aspects:
+                self.batch_res_pills.set_selected(sel_aspects)
+        finally:
+            self._loading_row = False
 
-                if sel_aspects:
-                    self.batch_res_pills.set_selected(sel_aspects)
-            finally:
-                self._loading_row = False
-
-            self._sync_tree_selection(idx, source=source)
+        self._sync_tree_selection(sel_indices, source=source)
 
     def cycle_selected_resolution(self):
         """Cycle the resolution (16x9 -> 1x1 -> 4x5 -> 9x16 -> 2x3) of the currently selected slate(s)."""
@@ -4089,15 +4075,14 @@ class SuperJoyWorkstation:
             sel_idx = sel_indices[0]
             if 0 <= sel_idx < len(self.manual_batch_data):
                 existing = self.manual_batch_data[sel_idx]
-                if existing.get("id", "").lower() == raw_id.lower():
-                    updated_entry = self._make_slate_entry(
-                        shared, raw_id, raw_title, raw_trt, target_aspects[0], existing
-                    )
-                    updated_entry["flame"] = "y" if self.f_flame.get() else "n"
-                    updated_entry["nfa"] = "NFA" if self.f_nfa.get() else ""
-                    self.manual_batch_data[sel_idx] = updated_entry
-                    self._refresh_tree(preserve_selection=True)
-                    return
+                updated_entry = self._make_slate_entry(
+                    shared, raw_id, raw_title, raw_trt, target_aspects[0], existing
+                )
+                updated_entry["flame"] = "y" if self.f_flame.get() else "n"
+                updated_entry["nfa"] = "NFA" if self.f_nfa.get() else ""
+                self.manual_batch_data[sel_idx] = updated_entry
+                self._refresh_tree(preserve_selection=True)
+                return
 
         for asp in target_aspects:
             entry = self._make_slate_entry(shared, raw_id, raw_title, raw_trt, asp)
@@ -4377,13 +4362,17 @@ class SuperJoyWorkstation:
             return []
 
         csv_by_id = {}
+        csv_by_id_aspect = {}
         csv_path = self.marry_csv_path.get().strip() or self.tsv_path.get().strip()
         if csv_path and os.path.isfile(csv_path):
             try:
                 for r in parse_metadata_file(csv_path):
                     aid = (r.get("id") or r.get("ad-id") or "").lower()
                     if aid:
-                        csv_by_id[aid] = r
+                        csv_by_id.setdefault(aid, r)
+                        r_asp = r.get("aspect") or detect_aspect_from_text(r.get("comp", "")) or detect_aspect_from_text(r.get("resolution", ""))
+                        if r_asp:
+                            csv_by_id_aspect[(aid, r_asp)] = r
             except Exception:
                 pass
 
@@ -4417,7 +4406,12 @@ class SuperJoyWorkstation:
 
             v_id, v_title, _ = parse_video_filename(matched_vf)
             eff_aspect = s_aspect or detect_aspect_from_text(matched_vf)
-            csv_row = csv_by_id.get(s_id.lower()) or csv_by_id.get(v_id.lower())
+            csv_row = (
+                (csv_by_id_aspect.get((s_id.lower(), eff_aspect)) if eff_aspect else None)
+                or (csv_by_id_aspect.get((v_id.lower(), eff_aspect)) if eff_aspect else None)
+                or csv_by_id.get(s_id.lower())
+                or csv_by_id.get(v_id.lower())
+            )
 
             if csv_row:
                 out_stem = build_canonical_delivery_stem(
@@ -4481,7 +4475,12 @@ class SuperJoyWorkstation:
         custom_out = resolve_path_input(self.output_dir.get())
         output_dir = custom_out if custom_out else os.path.join(videos_dir, "MARRIED_DELIVERY")
         auto_transcode = bool(self.auto_transcode_var.get())
-        folders = create_delivery_folders(output_dir, include_slated=True, include_unslated=auto_transcode)
+        folders = create_delivery_folders(
+            output_dir,
+            include_slated=True,
+            include_unslated=auto_transcode,
+            include_h264=auto_transcode,
+        )
         presets = ensure_ame_presets(folders["presets_dir"])
 
         settings = dict(settings or {})
@@ -4508,11 +4507,16 @@ class SuperJoyWorkstation:
             f"Videos Folder:   {videos_dir}",
             f"Output Root:     {output_dir}",
             f"Slated ProRes:   {folders['slated_prores']}",
-            f"Slated H.264:    {folders['slated_h264']}",
-            f"Unslated ProRes: {folders['unslated_prores']}",
-            f"Unslated H.264:  {folders['unslated_h264']}",
-            "",
         ]
+        if auto_transcode:
+            log_lines.extend(
+                [
+                    f"Slated H.264:    {folders['slated_h264']}",
+                    f"Unslated ProRes: {folders['unslated_prores']}",
+                    f"Unslated H.264:  {folders['unslated_h264']}",
+                ]
+            )
+        log_lines.append("")
         used_marry = {}
         for p in pairs:
             slated_stem = p.get("slated_stem") or os.path.splitext(p["output_name"])[0]
@@ -4546,7 +4550,12 @@ class SuperJoyWorkstation:
                 }
             )
             log_lines.append(
-                f"[MARRIED] {p['slate_name']} + {p['video_name']} -> SLATED/ProRes/{slated_stem}.mov & SLATED/h264/{slated_stem}.mp4"
+                f"[MARRIED] {p['slate_name']} + {p['video_name']} -> SLATED/ProRes/{slated_stem}.mov"
+                + (
+                    f", SLATED/h264/{slated_stem}.mp4, UNSLATED/ProRes/{clean_stem}.mov & UNSLATED/h264/{clean_stem}.mp4"
+                    if auto_transcode
+                    else ""
+                )
             )
 
         try:
@@ -4570,13 +4579,18 @@ class SuperJoyWorkstation:
                     os.remove(jsx_path + ".status")
             except OSError:
                 pass
-            msg = (
-                f"Married {len(marry_jobs)} existing slate(s) + master video(s) and queued in AME!\n\n"
-                f"Folders Created:\n"
+            marry_folder_list = (
                 f"• {folders['slated_prores']}\n"
                 f"• {folders['slated_h264']}\n"
                 f"• {folders['unslated_prores']}\n"
-                f"• {folders['unslated_h264']}\n\n"
+                f"• {folders['unslated_h264']}"
+                if auto_transcode
+                else f"• {folders['slated_prores']}"
+            )
+            msg = (
+                f"Married {len(marry_jobs)} existing slate(s) + master video(s) and queued in AME!\n\n"
+                f"Folders Created:\n"
+                f"{marry_folder_list}\n\n"
                 f"Editable Project:\n{aep_marry_path}" + msg_skip
             )
             self.root.after(0, lambda: self._alert("showinfo", "Marry Complete", msg))
@@ -4961,7 +4975,12 @@ class SuperJoyWorkstation:
         base_out = custom_out if custom_out else folder
         auto_transcode = bool(self.auto_transcode_var.get())
 
-        folders = create_delivery_folders(base_out, include_slated=False, include_unslated=True)
+        folders = create_delivery_folders(
+            base_out,
+            include_slated=False,
+            include_unslated=True,
+            include_h264=auto_transcode,
+        )
         presets = ensure_ame_presets(folders["presets_dir"])
         settings["prores_epr"] = presets.get("prores_epr", "")
         settings["h264_epr"] = presets.get("h264_epr", "")
@@ -4990,11 +5009,16 @@ class SuperJoyWorkstation:
             "=" * 52,
             f"Source Folder:   {folder}",
             f"Unslated ProRes: {folders['unslated_prores']}",
-            f"Unslated H.264:  {folders['unslated_h264']}",
-            f"Editable AEP:    {aep_unslate_path}",
-            f"Head Trim:       {UNSLATE_SECONDS:.1f}s (5.0s Slate + 2.0s Black/2-Pop)",
-            "",
         ]
+        if auto_transcode:
+            log_lines.append(f"Unslated H.264:  {folders['unslated_h264']}")
+        log_lines.extend(
+            [
+                f"Editable AEP:    {aep_unslate_path}",
+                f"Head Trim:       {UNSLATE_SECONDS:.1f}s (5.0s Slate + 2.0s Black/2-Pop)",
+                "",
+            ]
+        )
 
         skipped_unslate = []
         for fname in files:
@@ -5057,11 +5081,15 @@ class SuperJoyWorkstation:
                     os.remove(jsx_path + ".status")
             except OSError:
                 pass
+            unslate_folder_list = (
+                f"• {folders['unslated_prores']}\n• {folders['unslated_h264']}"
+                if auto_transcode
+                else f"• {folders['unslated_prores']}"
+            )
             msg = (
                 f"Queued {len(unslate_jobs)} un-slated spot(s) in Adobe Media Encoder!\n\n"
                 f"Output Folders:\n"
-                f"• {folders['unslated_prores']}\n"
-                f"• {folders['unslated_h264']}\n\n"
+                f"{unslate_folder_list}\n\n"
                 f"Editable Project (for manual checks/fixes):\n{aep_unslate_path}" + msg_skip
                 + (f"\n\nSkipped {len(skipped_unslate)} file(s) that did not look slated:\n"
                    + "\n".join(skipped_unslate[:8]) if skipped_unslate else "")
@@ -5320,6 +5348,7 @@ class SuperJoyWorkstation:
                 output_dir,
                 include_slated=True,
                 include_unslated=auto_transcode,
+                include_h264=auto_transcode,
             )
         presets = ensure_ame_presets(folders["presets_dir"])
 
@@ -5350,11 +5379,10 @@ class SuperJoyWorkstation:
         ]
         if slates_only:
             log_entries.append(f"Project Files:   {support_dir}")
-        if not slates_only:
-            log_entries.append(f"Slated H.264:    {folders['slated_h264']}")
         if not slates_only and auto_transcode:
             log_entries.extend(
                 [
+                    f"Slated H.264:    {folders['slated_h264']}",
                     f"Unslated ProRes: {folders['unslated_prores']}",
                     f"Unslated H.264:  {folders['unslated_h264']}",
                 ]
@@ -5405,6 +5433,7 @@ class SuperJoyWorkstation:
                         row_dest,
                         include_slated=True,
                         include_unslated=auto_transcode,
+                        include_h264=auto_transcode,
                     )
             else:
                 row_folders = folders
@@ -5415,6 +5444,13 @@ class SuperJoyWorkstation:
                 out_stem = build_canonical_delivery_stem(
                     data, target_aspect=asp, include_aspect=multi_aspect, suffix=""
                 )
+                if out_stem in used_stems:
+                    used_stems[out_stem] += 1
+                    suffix_n = f"_{used_stems[out_stem]}"
+                    log_entries.append(f"[WARNING] Duplicate output name '{out_stem}' — renamed with '{suffix_n}'")
+                    out_stem += suffix_n
+                else:
+                    used_stems[out_stem] = 1
                 slated_prores_file = os.path.join(row_folders["slated_prores"], f"{out_stem}.mov")
                 slated_h264_file = ""
                 preview_png_file = os.path.join(previews_dir, f"{out_stem}_preview.png")
@@ -5427,6 +5463,7 @@ class SuperJoyWorkstation:
                     "unslated_prores_output": "",
                     "unslated_h264_output": "",
                     "preview_png": preview_png_file,
+                    "clean_stem": out_stem,
                     "flame": flame_flag,
                     "text_data": data,
                     "aspect": asp,
@@ -5517,8 +5554,12 @@ class SuperJoyWorkstation:
             res_note = f" [{format_resolution_label(target_aspect)}]" if target_aspect else ""
             log_entries.append(
                 f"[SUCCESS] Paired {ad_id}{res_note} -> {os.path.basename(matched_video)} => "
-                f"SLATED/ProRes/{out_stem}.mov, SLATED/h264/{out_stem}.mp4, "
-                f"UNSLATED/ProRes/{clean_stem}.mov, UNSLATED/h264/{clean_stem}.mp4"
+                f"SLATED/ProRes/{out_stem}.mov"
+                + (
+                    f", SLATED/h264/{out_stem}.mp4, UNSLATED/ProRes/{clean_stem}.mov, UNSLATED/h264/{clean_stem}.mp4"
+                    if auto_transcode
+                    else ""
+                )
             )
             success_count += 1
 
@@ -5537,7 +5578,7 @@ class SuperJoyWorkstation:
 
         create_beep_wav(beep_path)  # long enough for any rate; JSX trims it to 1 frame
         jsx_path = os.path.join(support_dir, "_temp_ae_build.jsx")
-        self.write_jsx(jsx_path, ae_jobs, aep_master_path, beep_path, render_cfg, templates)
+        temp_tpl_dir = self.write_jsx(jsx_path, ae_jobs, aep_master_path, beep_path, render_cfg, templates)
 
         if not slates_only:
             ensure_ame_running()
@@ -5587,7 +5628,7 @@ class SuperJoyWorkstation:
             mode_desc = "Standalone Slates Project" if slates_only else "Master Slated + Unslated Project"
             folder_summary = (
                 f"• {folders['slated_prores']}"
-                if slates_only
+                if (slates_only or not auto_transcode)
                 else f"• {folders['slated_prores']}\n• {folders['slated_h264']}\n• {folders['unslated_prores']}\n• {folders['unslated_h264']}"
             )
             action_desc = (
@@ -5615,6 +5656,8 @@ class SuperJoyWorkstation:
                 ),
             )
         finally:
+            if temp_tpl_dir and os.path.isdir(temp_tpl_dir):
+                shutil.rmtree(temp_tpl_dir, ignore_errors=True)
             self.root.after(0, self.reset_ui)
 
     def reset_ui(self):
@@ -5779,8 +5822,8 @@ open "{primary_target}"
         # Work from a private copy of the .aep so the original template is never opened/locked in AE
         templates = dict(templates or {})
         src_aep = templates.get("_aep")
+        work_dir = ""
         if src_aep and os.path.isfile(src_aep):
-            import tempfile
             work_dir = tempfile.mkdtemp(prefix="sj_tpl_")
             work_aep = os.path.join(work_dir, os.path.basename(src_aep))
             shutil.copyfile(src_aep, work_aep)
@@ -6162,6 +6205,7 @@ open "{primary_target}"
             var tplKey = job.aspect ? job.aspect : vidAspect;
             var slateComp = null;
             var slateId = (job.text_data && (job.text_data["id"] || job.text_data["ad-id"])) ? (job.text_data["id"] || job.text_data["ad-id"]) : ("Slate_" + (i + 1));
+            var compBase = job.clean_stem ? job.clean_stem : (job.aspect ? (slateId + "_" + tplKey) : slateId);
 
             if (usingAepTemplate) {{
                 var baseTplComp = templateComps[tplKey];
@@ -6170,7 +6214,7 @@ open "{primary_target}"
                     continue;
                 }}
                 slateComp = baseTplComp.duplicate();
-                slateComp.name = slateId + "_" + tplKey + "_SLATE";
+                slateComp.name = compBase + "_SLATE";
                 slateComp.parentFolder = slatesFolder;
             }} else {{
                 var tplPath = templates[tplKey];
@@ -6235,7 +6279,7 @@ open "{primary_target}"
                 totalDuration = Math.round((headDuration + vidItem.duration) * compFps) / compFps;
             }}
 
-            var compName = job.aspect ? (slateId + "_" + job.aspect + "_SLATED") : (slateId + "_SLATED");
+            var compName = compBase + "_SLATED";
             var masterComp = app.project.items.addComp(compName, compW, compH, 1.0, totalDuration, compFps);
             masterComp.parentFolder = masterFolder;
             setCompStartTimecode(masterComp, "00:59:53:00");
@@ -6352,6 +6396,7 @@ open "{primary_target}"
         """
         with open(path, "w", encoding="utf-8") as f:
             f.write(wrap_jsx_with_status(jsx_code, path + ".status"))
+        return work_dir
 
 
 if __name__ == "__main__":
