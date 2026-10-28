@@ -534,8 +534,10 @@ def ensure_ame_running(wait_seconds=75):
 def wrap_jsx_with_status(jsx_body, status_path):
     """Wrap a generated JSX so any error is caught and a status file is always written
     (osascript returns success even when After Effects throws, so Python reads this file)."""
+    ame_worker_path = status_path + ".ame_worker.jsx"
+    ame_status_path = status_path + ".ame_status"
     return (
-        "var __SJ_STATUS = {ok: false, queued: false, rendered: false, rqItems: 0, error: \"\", skipped: \"\"};\n"
+        "var __SJ_STATUS = {ok: false, queued: false, rendered: false, rqItems: 0, error: \"\", skipped: \"\", ameTasks: []};\n"
         "function __sjErrText(e) {\n"
         "  if (!e) return 'Unknown error';\n"
         "  try { if (typeof e === 'string') return e; } catch (e0) {}\n"
@@ -544,13 +546,61 @@ def wrap_jsx_with_status(jsx_body, status_path):
         "  try { if (e.toString) return e.toString(); } catch (e3) {}\n"
         "  return 'After Effects script error';\n"
         "}\n"
+        "function __sjQuote(s) {\n"
+        "  return '\"' + String(s === undefined || s === null ? '' : s).replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"').replace(/\\r/g, '\\\\r').replace(/\\n/g, '\\\\n') + '\"';\n"
+        "}\n"
+        "function __sjQueueViaAMEBridgeTalk(aepFilePath, tasks, proresPresetPath, h264PresetPath) {\n"
+        "  try {\n"
+        "    if (!tasks || tasks.length === 0) return false;\n"
+        "    var workerFile = new File(" + json.dumps(ame_worker_path) + ");\n"
+        "    var ameStatFile = new File(" + json.dumps(ame_status_path) + ");\n"
+        "    if (ameStatFile.exists) { try { ameStatFile.remove(); } catch (eRm) {} }\n"
+        "    var lines = [];\n"
+        "    lines.push('(function() {');\n"
+        "    lines.push('  var st = new File(' + __sjQuote(" + json.dumps(ame_status_path) + ") + ');');\n"
+        "    lines.push('  var added = 0, errs = [];');\n"
+        "    lines.push('  try {');\n"
+        "    lines.push('    var fe = app.getFrontend();');\n"
+        "    lines.push('    if (!fe) throw new Error(\"app.getFrontend() unavailable\");');\n"
+        "    for (var ti = 0; ti < tasks.length; ti++) {\n"
+        "      var tk = tasks[ti];\n"
+        "      var presetPth = (tk.format === 'QuickTime') ? proresPresetPath : h264PresetPath;\n"
+        "      lines.push('    var ew_' + ti + ' = fe.addDLToBatch(' +\n"
+        "        __sjQuote(aepFilePath) + ', ' +\n"
+        "        __sjQuote(tk.format) + ', ' +\n"
+        "        __sjQuote(presetPth || '') + ', ' +\n"
+        "        __sjQuote(tk.guid) + ', ' +\n"
+        "        __sjQuote(tk.output) + ');');\n"
+        "      lines.push('    if (ew_' + ti + ') { added++; } else { errs.push(' + __sjQuote(tk.output) + '); }');\n"
+        "    }\n"
+        "    lines.push('    try { app.bringToFront(); } catch (eFront) {}');\n"
+        "    lines.push('  } catch (eAME) { errs.push(eAME.toString()); }');\n"
+        "    lines.push('  st.encoding = \"UTF-8\"; st.open(\"w\");');\n"
+        "    lines.push('  st.write(\"added=\" + added + \"\\\\nerrors=\" + errs.join(\" | \") + \"\\\\n\");');\n"
+        "    lines.push('  st.close();');\n"
+        "    lines.push('})();');\n"
+        "    workerFile.encoding = 'UTF-8';\n"
+        "    workerFile.open('w');\n"
+        "    workerFile.write(lines.join('\\n'));\n"
+        "    workerFile.close();\n"
+        "    var bt = new BridgeTalk();\n"
+        "    bt.target = 'ame';\n"
+        "    bt.body = '$.evalFile(' + __sjQuote(workerFile.fsName) + ');';\n"
+        "    if (bt.send()) {\n"
+        "      __SJ_STATUS.ameExpected = tasks.length;\n"
+        "      return true;\n"
+        "    }\n"
+        "  } catch (eBT) {}\n"
+        "  return false;\n"
+        "}\n"
         "function __sjWriteStatus() {\n"
         "  try {\n"
         "    var f = new File(" + json.dumps(status_path) + "); f.encoding = 'UTF-8'; f.open('w');\n"
         "    var errClean = (__SJ_STATUS.error ? __sjErrText(__SJ_STATUS.error) : '').replace(/[\\r\\n]+/g, ' ');\n"
         "    f.write('ok=' + (__SJ_STATUS.ok ? 1 : 0) + '\\nqueued=' + (__SJ_STATUS.queued ? 1 : 0)"
         " + '\\nrendered=' + (__SJ_STATUS.rendered ? 1 : 0)"
-        " + '\\nrq_items=' + __SJ_STATUS.rqItems + '\\nerror=' + errClean"
+        " + '\\nrq_items=' + __SJ_STATUS.rqItems + '\\name_expected=' + (__SJ_STATUS.ameExpected || 0)"
+        " + '\\nerror=' + errClean"
         " + '\\nskipped=' + String(__SJ_STATUS.skipped || '').replace(/[\\r\\n]+/g, ' ') + '\\n');\n"
         "    f.close();\n"
         "  } catch (eW) {}\n"
@@ -575,10 +625,11 @@ def wrap_jsx_with_status(jsx_body, status_path):
 
 
 def clear_jsx_status(jsx_path):
-    try:
-        os.remove(jsx_path + ".status")
-    except OSError:
-        pass
+    for sfx in (".status", ".status.ame_worker.jsx", ".status.ame_status"):
+        try:
+            os.remove(jsx_path + sfx)
+        except OSError:
+            pass
 
 
 def verify_jsx_status(jsx_path, expect_queue=True):
@@ -594,6 +645,35 @@ def verify_jsx_status(jsx_path, expect_queue=True):
                 info[k] = v
     if info.get("ok") != "1" or info.get("error"):
         raise RuntimeError(info.get("error") or "After Effects script failed.")
+    ame_expected = int(info.get("ame_expected", "0") or 0)
+    if ame_expected > 0:
+        ame_sp = sp + ".ame_status"
+        ame_wk = sp + ".ame_worker.jsx"
+        ame_info = {}
+        for _ in range(120):
+            if os.path.isfile(ame_sp):
+                try:
+                    with open(ame_sp, "r", encoding="utf-8") as af:
+                        for aline in af:
+                            if "=" in aline:
+                                ak, av = aline.rstrip("\n").split("=", 1)
+                                ame_info[ak] = av
+                    break
+                except OSError:
+                    pass
+            time.sleep(0.5)
+        for p in (ame_sp, ame_wk):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+        added_cnt = int(ame_info.get("added", "0") or 0)
+        if added_cnt < ame_expected:
+            ame_err = ame_info.get("errors", "").strip()
+            raise RuntimeError(
+                f"Adobe Media Encoder queued {added_cnt} of {ame_expected} expected items."
+                + (f" ({ame_err})" if ame_err else "")
+            )
     if expect_queue and (
         (info.get("queued") != "1" and info.get("rendered") != "1")
         or int(info.get("rq_items", "0") or 0) == 0
@@ -4665,6 +4745,8 @@ class SuperJoyWorkstation:
         }}
 
         function queueProResAndH264(comp, proresPath, h264Path) {{
+            var compGuid = "";
+            try {{ compGuid = String(comp.dynamicLinkGUID || ""); }} catch (eGuid) {{}}
             if (proresPath) {{
                 var rqPro = app.project.renderQueue.items.add(comp);
                 var omPro = rqPro.outputModule(1);
@@ -4673,6 +4755,9 @@ class SuperJoyWorkstation:
                     omPro.setSettings({{"Output Audio": "On", "Output File Info": {{"Subfolder Path": ""}}}});
                 }} catch (eAudP) {{}}
                 omPro.file = new File(proresPath);
+                if (compGuid) {{
+                    __SJ_STATUS.ameTasks.push({{guid: compGuid, format: "QuickTime", output: proresPath}});
+                }}
             }}
             if (h264Path) {{
                 var rqMp4 = app.project.renderQueue.items.add(comp);
@@ -4687,6 +4772,9 @@ class SuperJoyWorkstation:
                     omMp4.setSettings({{"Output Audio": "On", "Output File Info": {{"Subfolder Path": ""}}}});
                 }} catch (eAudM) {{}}
                 omMp4.file = new File(h264Path);
+                if (compGuid) {{
+                    __SJ_STATUS.ameTasks.push({{guid: compGuid, format: "H.264", output: h264Path}});
+                }}
             }}
         }}
 
@@ -4702,7 +4790,11 @@ class SuperJoyWorkstation:
         // Never silently discard the user's open work: save a file-backed project, refuse an unsaved one.
         if (app.project && app.project.numItems > 0) {{
             if (app.project.file) {{
-                app.project.save();
+                try {{
+                    if (app.project.file.exists && app.project.file.parent && app.project.file.parent.exists) {{
+                        app.project.save();
+                    }}
+                }} catch (eSavePrev) {{}}
             }} else {{
                 throw new Error("After Effects has an unsaved project open. Save or close it, then run again.");
             }}
@@ -4857,6 +4949,10 @@ class SuperJoyWorkstation:
         __SJ_STATUS.skipped = skipped.join(" | ");
         var queued = false, lastErr = "";
         __SJ_STATUS.rqItems = app.project.renderQueue.numItems;
+        if (__sjQueueViaAMEBridgeTalk(aepFile.fsName, __SJ_STATUS.ameTasks, cfg.prores_epr || "", cfg.h264_epr || "")) {{
+            queued = true;
+            __SJ_STATUS.queued = true;
+        }}
         for (var qa = 0; qa < 4 && !queued; qa++) {{
             try {{
                 app.project.renderQueue.queueInAME(false);
@@ -5178,7 +5274,11 @@ class SuperJoyWorkstation:
         // Never silently discard the user's open work: save a file-backed project, refuse an unsaved one.
         if (app.project && app.project.numItems > 0) {{
             if (app.project.file) {{
-                app.project.save();
+                try {{
+                    if (app.project.file.exists && app.project.file.parent && app.project.file.parent.exists) {{
+                        app.project.save();
+                    }}
+                }} catch (eSavePrev) {{}}
             }} else {{
                 throw new Error("After Effects has an unsaved project open. Save or close it, then run again.");
             }}
@@ -5236,6 +5336,8 @@ class SuperJoyWorkstation:
             vidLayer.property("Scale").setValue([100, 100]);
 
             var proresTarget = job.prores_output || job.final_output;
+            var compGuid = "";
+            try {{ compGuid = String(comp.dynamicLinkGUID || ""); }} catch (eGuid) {{}}
             if (proresTarget) {{
                 var rqItem = app.project.renderQueue.items.add(comp);
                 var outMod = rqItem.outputModule(1);
@@ -5244,6 +5346,7 @@ class SuperJoyWorkstation:
                     outMod.setSettings({{"Output Audio": "On", "Output File Info": {{"Subfolder Path": ""}}}});
                 }} catch (eAudP) {{}}
                 outMod.file = new File(proresTarget);
+                __SJ_STATUS.ameTasks.push({{guid: compGuid, format: "QuickTime", output: proresTarget}});
             }}
             if (job.h264_output) {{
                 var rqMp4 = app.project.renderQueue.items.add(comp);
@@ -5258,6 +5361,7 @@ class SuperJoyWorkstation:
                     outMp4.setSettings({{"Output Audio": "On", "Output File Info": {{"Subfolder Path": ""}}}});
                 }} catch (eAudM) {{}}
                 outMp4.file = new File(job.h264_output);
+                __SJ_STATUS.ameTasks.push({{guid: compGuid, format: "H.264", output: job.h264_output}});
             }}
         }}
 
@@ -5269,6 +5373,10 @@ class SuperJoyWorkstation:
         app.project.save(aepFile);
         var queued = false, lastErr = "";
         __SJ_STATUS.rqItems = app.project.renderQueue.numItems;
+        if (__sjQueueViaAMEBridgeTalk(aepFile.fsName, __SJ_STATUS.ameTasks, cfg.prores_epr || "", cfg.h264_epr || "")) {{
+            queued = true;
+            __SJ_STATUS.queued = true;
+        }}
         for (var qa = 0; qa < 4 && !queued; qa++) {{
             try {{
                 app.project.renderQueue.queueInAME(false);
@@ -5901,6 +6009,8 @@ open "{primary_target}"
         }}
 
         function queueProResAndH264(comp, proresPath, h264Path) {{
+            var compGuid = "";
+            try {{ compGuid = String(comp.dynamicLinkGUID || ""); }} catch (eGuid) {{}}
             if (proresPath) {{
                 var rqPro = app.project.renderQueue.items.add(comp);
                 var omPro = rqPro.outputModule(1);
@@ -5909,6 +6019,9 @@ open "{primary_target}"
                     omPro.setSettings({{"Output Audio": "On", "Output File Info": {{"Subfolder Path": ""}}}});
                 }} catch (eAudP) {{}}
                 omPro.file = new File(proresPath);
+                if (compGuid) {{
+                    __SJ_STATUS.ameTasks.push({{guid: compGuid, format: "QuickTime", output: proresPath}});
+                }}
             }}
             if (h264Path) {{
                 var rqMp4 = app.project.renderQueue.items.add(comp);
@@ -5923,6 +6036,9 @@ open "{primary_target}"
                     omMp4.setSettings({{"Output Audio": "On", "Output File Info": {{"Subfolder Path": ""}}}});
                 }} catch (eAudM) {{}}
                 omMp4.file = new File(h264Path);
+                if (compGuid) {{
+                    __SJ_STATUS.ameTasks.push({{guid: compGuid, format: "H.264", output: h264Path}});
+                }}
             }}
         }}
 
@@ -6125,7 +6241,11 @@ open "{primary_target}"
         // Never silently discard the user's open work: save a file-backed project, refuse an unsaved one.
         if (app.project && app.project.numItems > 0) {{
             if (app.project.file) {{
-                app.project.save();
+                try {{
+                    if (app.project.file.exists && app.project.file.parent && app.project.file.parent.exists) {{
+                        app.project.save();
+                    }}
+                }} catch (eSavePrev) {{}}
             }} else {{
                 throw new Error("After Effects has an unsaved project open. Save or close it, then run again.");
             }}
@@ -6379,6 +6499,10 @@ open "{primary_target}"
             }}
         }} else {{
             var queued = false, lastErr = "";
+            if (__sjQueueViaAMEBridgeTalk(aepFile.fsName, __SJ_STATUS.ameTasks, cfg.prores_epr || "", cfg.h264_epr || "")) {{
+                queued = true;
+                __SJ_STATUS.queued = true;
+            }}
             for (var qa = 0; qa < 4 && !queued; qa++) {{
                 try {{
                     app.project.renderQueue.queueInAME(false);
