@@ -11,7 +11,10 @@ APP="MSTR-SL8R"
 DEST="/Applications/$APP.app"
 OUT="build/xcode-release"
 
-xcodegen generate --quiet
+# Regenerate only when project.yml changed, so an open Xcode window isn't told its project was modified.
+if [[ ! -f SlateWorkstation.xcodeproj/project.pbxproj || project.yml -nt SlateWorkstation.xcodeproj/project.pbxproj ]]; then
+  xcodegen generate --quiet
+fi
 xcodebuild -project SlateWorkstation.xcodeproj -scheme "$APP" -configuration Release \
   -derivedDataPath "$OUT" -allowProvisioningUpdates build | grep -E "error|BUILD" || true
 BUILT="$OUT/Build/Products/Release/$APP.app"

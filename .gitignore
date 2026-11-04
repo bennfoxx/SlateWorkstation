@@ -8,3 +8,6 @@ dist_dmg*/
 build/
 *.spec
 
+
+# Xcode per-user state
+xcuserdata/
