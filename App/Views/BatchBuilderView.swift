@@ -46,7 +46,7 @@ struct BatchBuilderView: View {
                 .pickerStyle(.segmented).labelsHidden().frame(width: 330)
             }
             PathField(label: "Slate Template (.aep)", path: $state.templatePath, files: true, types: ["aep"],
-                      placeholder: "Bundled SuperJoy template (Template_006)")
+                      placeholder: "Bundled slate template (Template_006)")
             if !state.slatesOnly {
                 PathField(label: "Master Videos Folder", path: $state.videosDir)
             }
