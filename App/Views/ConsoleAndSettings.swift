@@ -101,7 +101,7 @@ struct SettingsView: View {
             Section("Python worker") {
                 TextField("python3 path", text: $pythonPath, prompt: Text(PythonWorker.resolvePython()?.path ?? "not found"))
                 TextField("Engine folder", text: $engineDir, prompt: Text("App bundle Resources"))
-                Text("Leave blank to use the first python3 found and the engine bundled with the app. Set Engine folder to the repo to test unbundled changes to SuperJoy_Slating_App.py.")
+                Text("Leave blank to use the Python and engine embedded in the app. Set Engine folder to the repo to test unbundled changes to SuperJoy_Slating_App.py.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

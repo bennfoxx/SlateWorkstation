@@ -22,12 +22,17 @@ final class PythonWorker: @unchecked Sendable {
     private let lock = NSLock()
     private var process: Process?
 
-    /// Python interpreter: user override, else the first usable python3 on the usual paths.
+    /// Python interpreter: user override, else the embedded runtime, else a system python3.
     static func resolvePython() -> URL? {
         let fm = FileManager.default
         if let custom = UserDefaults.standard.string(forKey: pythonOverrideKey), !custom.isEmpty,
            fm.isExecutableFile(atPath: custom) {
             return URL(fileURLWithPath: custom)
+        }
+        // Embedded runtime (scripts/embed_python_runtime.sh), so the app needs no system Python.
+        if let bundled = Bundle.main.resourceURL?.appendingPathComponent("python/bin/python3"),
+           fm.isExecutableFile(atPath: bundled.path) {
+            return bundled
         }
         var candidates = ["/opt/homebrew/bin/python3", "/usr/local/bin/python3"]
         // /usr/bin/python3 is a shim that prompts to install the Command Line Tools if
@@ -64,7 +69,7 @@ final class PythonWorker: @unchecked Sendable {
     func run(arguments: [String], stdin: Data? = nil,
              onEvent: @escaping @MainActor (WorkerEvent) -> Void) async throws -> [String: Any] {
         guard let python = Self.resolvePython() else {
-            throw WorkerError(message: "No python3 found. Install Python 3 (e.g. `brew install python`) or set its path in Settings.")
+            throw WorkerError(message: "No Python runtime found: the embedded one is missing from the app and no python3 is installed. Rebuild the app, or set a python3 path in Settings.")
         }
         guard let engine = Self.resolveEngineDirectory() else {
             throw WorkerError(message: "slate_worker.py is missing from the app bundle.")

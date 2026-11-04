@@ -44,6 +44,35 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
+def _install_tkinter_stub():
+    """The engine module imports tkinter at the top (for its Tk UI), but the worker never
+    creates a widget. The embedded Python ships without Tcl/Tk, so stand in a stub that
+    satisfies the module-level imports and base classes. A real tkinter is used if present."""
+    try:
+        import tkinter  # noqa: F401
+        import tkinter.font, tkinter.filedialog, tkinter.messagebox, tkinter.ttk  # noqa: F401,E401
+        return
+    except ImportError:
+        pass
+    import types
+
+    class _TkStub:
+        def __init__(self, *a, **k):
+            raise RuntimeError("Tk UI is not available in the headless worker")
+
+    def _module(name):
+        m = types.ModuleType(name)
+        m.__getattr__ = lambda attr: _TkStub  # any tk.X / ttk.X resolves to the stub class
+        sys.modules[name] = m
+        return m
+
+    root = _module("tkinter")
+    for sub in ("font", "filedialog", "messagebox", "ttk", "constants"):
+        setattr(root, sub, _module(f"tkinter.{sub}"))
+
+
+_install_tkinter_stub()
+
 import SuperJoy_Slating_App as engine  # noqa: E402  (import has no UI side effects)
 
 _W = engine.SuperJoyWorkstation  # unbound workflow methods are reused with HeadlessHost
@@ -241,6 +270,8 @@ def cmd_info():
         "default_spreadsheet": engine.DEFAULT_SPREADSHEET_XLSX,
         "standard_trts": list(engine.STANDARD_TRTS),
         "engine_dir": engine._APP_DIR,
+        "python": sys.executable,
+        "python_version": sys.version.split()[0],
     }
 
 

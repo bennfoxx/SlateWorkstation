@@ -18,6 +18,7 @@ settings:
     INFOPLIST_FILE: App/Info.plist
     CODE_SIGN_ENTITLEMENTS: App/App.entitlements
     GENERATE_INFOPLIST_FILE: NO
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
 
 targetTemplates:
   SlateApp:
@@ -43,6 +44,12 @@ targetTemplates:
         buildPhase: resources
       - path: readme.txt
         buildPhase: resources
+    postBuildScripts:
+      # Copies vendor/python (staged from uv's python-build-standalone) into
+      # Contents/Resources/python and signs it; Xcode then signs the app.
+      - name: Embed Python Runtime
+        script: exec "$SRCROOT/scripts/embed_python_runtime.sh"
+        basedOnDependencyAnalysis: false
 
 targets:
   SuperJoy Slating Workstation:
