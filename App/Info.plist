@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Slate Sheet</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>org.openxmlformats.spreadsheetml.sheet</string>
+				<string>public.comma-separated-values-text</string>
+				<string>public.tab-separated-values-text</string>
+				<string>public.plain-text</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIconName</key>
+	<string>$(ASSETCATALOG_COMPILER_APPICON_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.video</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>$(PRODUCT_NAME) automates Adobe After Effects and Adobe Media Encoder to build, queue, and render broadcast slates.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>$(PRODUCT_NAME) needs access to read video assets and export rendered broadcast packages.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>$(PRODUCT_NAME) needs access to read spreadsheet templates and After Effects projects.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>$(PRODUCT_NAME) needs access to process master ProRes videos and write deliveries.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 Benjamin Fox. All rights reserved.</string>
+	<key>SWDefaultTheme</key>
+	<string>$(SW_DEFAULT_THEME)</string>
+</dict>
+</plist>

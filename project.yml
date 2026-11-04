@@ -1,0 +1,64 @@
+# XcodeGen spec for the native SwiftUI front end.
+# Regenerate the project after editing:  xcodegen generate
+# The SwiftUI app drives the Python engine (SuperJoy_Slating_App.py) through
+# slate_worker.py, which is bundled in Contents/Resources with its presets and templates.
+name: SlateWorkstation
+options:
+  bundleIdPrefix: com.superjoy
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: 43LRM27435
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: YES
+    INFOPLIST_FILE: App/Info.plist
+    CODE_SIGN_ENTITLEMENTS: App/App.entitlements
+    GENERATE_INFOPLIST_FILE: NO
+
+targetTemplates:
+  SlateApp:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+        excludes: ["Info.plist", "App.entitlements"]
+      - Shared
+      # Python engine + resources it resolves relative to its own folder (_APP_DIR)
+      - path: SuperJoy_Slating_App.py
+        buildPhase: resources
+      - path: slate_worker.py
+        buildPhase: resources
+      - path: presets
+        type: folder
+        buildPhase: resources
+      - path: "sj_Slates From Spreadsheet_Template_006.aep"
+        buildPhase: resources
+      - path: "sj_Slates From Spreadsheet_Template_005.aep"
+        buildPhase: resources
+      - path: "Slates From Spreadsheet_Template_001.xlsx"
+        buildPhase: resources
+      - path: readme.txt
+        buildPhase: resources
+
+targets:
+  SuperJoy Slating Workstation:
+    templates: [SlateApp]
+    settings:
+      base:
+        PRODUCT_NAME: "SuperJoy Slating Workstation"
+        PRODUCT_BUNDLE_IDENTIFIER: com.superjoy.slatingworkstation.native
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SW_DEFAULT_THEME: superjoy
+
+  MSTR-SL8R:
+    templates: [SlateApp]
+    settings:
+      base:
+        PRODUCT_NAME: "MSTR-SL8R"
+        PRODUCT_BUNDLE_IDENTIFIER: com.benfoxmedia.mstrsl8r.native
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-MSTR
+        SW_DEFAULT_THEME: mstr_sl8r

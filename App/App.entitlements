@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Required under Hardened Runtime so the worker's osascript calls can drive
+         Adobe After Effects and Adobe Media Encoder (TCC attributes them to this app).
+         The Python worker runs as a separate, separately signed process, so the app
+         itself needs no JIT / unsigned-memory / library-validation exceptions.
+         No App Sandbox: the app must launch python3 and read/write arbitrary
+         production folders. -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+</dict>
+</plist>
