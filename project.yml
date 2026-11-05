@@ -38,20 +38,20 @@ targetTemplates:
         excludes: ["Info.plist", "App.entitlements"]
       - Shared
       # Python engine + resources it resolves relative to its own folder (_APP_DIR)
-      - path: SuperJoy_Slating_App.py
+      - path: engine/SuperJoy_Slating_App.py
         buildPhase: resources
-      - path: slate_worker.py
+      - path: engine/slate_worker.py
         buildPhase: resources
-      - path: presets
+      - path: engine/presets
         type: folder
         buildPhase: resources
-      - path: "sj_Slates From Spreadsheet_Template_006.aep"
+      - path: "engine/sj_Slates From Spreadsheet_Template_006.aep"
         buildPhase: resources
-      - path: "sj_Slates From Spreadsheet_Template_005.aep"
+      - path: "engine/sj_Slates From Spreadsheet_Template_005.aep"
         buildPhase: resources
-      - path: "Slates From Spreadsheet_Template_001.xlsx"
+      - path: "engine/Slates From Spreadsheet_Template_001.xlsx"
         buildPhase: resources
-      - path: readme.txt
+      - path: engine/readme.txt
         buildPhase: resources
     postBuildScripts:
       # Copies vendor/python (staged from uv's python-build-standalone) into

@@ -8,59 +8,58 @@
 
 /* Begin PBXBuildFile section */
 		01CB08B68D61A99751B2D806 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7FD5925C54CBB4858479341 /* Theme.swift */; };
-		05B33620BE697CC04721CA31 /* slate_worker.py in Resources */ = {isa = PBXBuildFile; fileRef = 236002DA651922BAF6CE29DD /* slate_worker.py */; };
 		07ADF2F01D3BB265A2758D32 /* presets in Resources */ = {isa = PBXBuildFile; fileRef = 95E6050992D1A71773C6DF44 /* presets */; };
+		0B699E7BF2AE027B0CE63745 /* sj_Slates From Spreadsheet_Template_006.aep in Resources */ = {isa = PBXBuildFile; fileRef = C77981A678E829BFB61BD3EB /* sj_Slates From Spreadsheet_Template_006.aep */; };
+		0E356B2A2B86135EB9E2483D /* SuperJoy_Slating_App.py in Resources */ = {isa = PBXBuildFile; fileRef = 029341957FD2A7F384C4384A /* SuperJoy_Slating_App.py */; };
 		15F78189BAF6464CEDE1A666 /* ConsoleAndSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E910C40148E42B86547B5558 /* ConsoleAndSettings.swift */; };
-		1875B6B8C5F5189AD2F788C6 /* sj_Slates From Spreadsheet_Template_005.aep in Resources */ = {isa = PBXBuildFile; fileRef = 742F33AAE19B522E9CB47927 /* sj_Slates From Spreadsheet_Template_005.aep */; };
 		2BE1DAF507831F28A27E6E21 /* WorkstationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F43FABFF1BF65A2372AC47E7 /* WorkstationState.swift */; };
-		315121F1216E9F12A88380F4 /* SuperJoy_Slating_App.py in Resources */ = {isa = PBXBuildFile; fileRef = 5946FA6A32343EB66545D82A /* SuperJoy_Slating_App.py */; };
 		3C1E7815E5F53F544DABFE39 /* PythonWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7348397E4BFC8498869BE33 /* PythonWorker.swift */; };
-		41542BBD54C9F8BEAA83C60A /* slate_worker.py in Resources */ = {isa = PBXBuildFile; fileRef = 236002DA651922BAF6CE29DD /* slate_worker.py */; };
-		4B7D8068541AB5724277F80C /* Slates From Spreadsheet_Template_001.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 3AB0E48E418FC23FEA4EA76C /* Slates From Spreadsheet_Template_001.xlsx */; };
-		4C466A7002B96D6460489CEB /* readme.txt in Resources */ = {isa = PBXBuildFile; fileRef = 1191333ED989E593161F5439 /* readme.txt */; };
+		431ABB8FF44E59712494D650 /* sj_Slates From Spreadsheet_Template_005.aep in Resources */ = {isa = PBXBuildFile; fileRef = 9D6D70E85B1CE6376ACAE414 /* sj_Slates From Spreadsheet_Template_005.aep */; };
+		4410ED03698D13D306E2C4F0 /* Slates From Spreadsheet_Template_001.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = F8EAF80202FEAFA07FA2C907 /* Slates From Spreadsheet_Template_001.xlsx */; };
+		4C0934D00401ABE18B4418AE /* sj_Slates From Spreadsheet_Template_005.aep in Resources */ = {isa = PBXBuildFile; fileRef = 9D6D70E85B1CE6376ACAE414 /* sj_Slates From Spreadsheet_Template_005.aep */; };
+		4EAB0B97D99E3E6F74444CB2 /* SuperJoy_Slating_App.py in Resources */ = {isa = PBXBuildFile; fileRef = 029341957FD2A7F384C4384A /* SuperJoy_Slating_App.py */; };
 		4EC46CA455B28F6D1A9FD4B6 /* WorkstationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F43FABFF1BF65A2372AC47E7 /* WorkstationState.swift */; };
 		4FDC77D618E7E22219F730F6 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A34CD7DACB51EE2C2F0643 /* Models.swift */; };
 		52BB338F7A3191C782BBA29D /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40934FD83495C61A3FEE9203 /* MainView.swift */; };
 		541C10264DEFA3397C63DD5D /* ConsoleAndSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E910C40148E42B86547B5558 /* ConsoleAndSettings.swift */; };
 		5F542FB643C272C79F07B4DA /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9B391B42A655B703B50BBA3 /* Components.swift */; };
-		65ED54952FF0611795DD1D3A /* sj_Slates From Spreadsheet_Template_006.aep in Resources */ = {isa = PBXBuildFile; fileRef = 1610246733BF652EEEE9D778 /* sj_Slates From Spreadsheet_Template_006.aep */; };
-		6C9B1989E75934FE13A23B56 /* sj_Slates From Spreadsheet_Template_005.aep in Resources */ = {isa = PBXBuildFile; fileRef = 742F33AAE19B522E9CB47927 /* sj_Slates From Spreadsheet_Template_005.aep */; };
 		6DC968EB548CCDBFE53378F3 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9B391B42A655B703B50BBA3 /* Components.swift */; };
-		6E85A3403C8EDCDC508F14F3 /* sj_Slates From Spreadsheet_Template_006.aep in Resources */ = {isa = PBXBuildFile; fileRef = 1610246733BF652EEEE9D778 /* sj_Slates From Spreadsheet_Template_006.aep */; };
-		72A59C0488222345DDEC2359 /* Slates From Spreadsheet_Template_001.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = 3AB0E48E418FC23FEA4EA76C /* Slates From Spreadsheet_Template_001.xlsx */; };
 		72CAEB41212517F213104D00 /* BatchBuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB9173FF1C82271028A4F678 /* BatchBuilderView.swift */; };
 		7320F1B081AC9D5BE4116908 /* SlatePreviewCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9548D5DFA8DFCF45B3B93AA /* SlatePreviewCard.swift */; };
-		7FC891EB90961518BD54888F /* readme.txt in Resources */ = {isa = PBXBuildFile; fileRef = 1191333ED989E593161F5439 /* readme.txt */; };
 		80048AB036B69CCDF208F307 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40934FD83495C61A3FEE9203 /* MainView.swift */; };
+		80A6C53E93D5A1FBCB2FF6F4 /* Slates From Spreadsheet_Template_001.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = F8EAF80202FEAFA07FA2C907 /* Slates From Spreadsheet_Template_001.xlsx */; };
 		83454B3C6CF6EEBAF05C1AC4 /* SlateApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED381BF502339D5E129054E9 /* SlateApp.swift */; };
 		8B0E8F901BDAF0C9C2C12B7F /* PythonWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7348397E4BFC8498869BE33 /* PythonWorker.swift */; };
 		944AF90F06201391114674A9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5D63FA7FF27408C806337EA6 /* Assets.xcassets */; };
 		94A7E1807CB39237B9CE68E7 /* SlatePreviewCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9548D5DFA8DFCF45B3B93AA /* SlatePreviewCard.swift */; };
 		991A3FF77A75F1E4F991B784 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A34CD7DACB51EE2C2F0643 /* Models.swift */; };
+		A4A1CF0B9BAC6FDA4B695D13 /* readme.txt in Resources */ = {isa = PBXBuildFile; fileRef = 1A875CF3950ED66F53FB3CCA /* readme.txt */; };
+		AD0149F7CCBA0F8A14835BE5 /* slate_worker.py in Resources */ = {isa = PBXBuildFile; fileRef = D5F7B227904C842EC402E01C /* slate_worker.py */; };
 		B3FDFF2D218CB9AB851910DF /* presets in Resources */ = {isa = PBXBuildFile; fileRef = 95E6050992D1A71773C6DF44 /* presets */; };
 		BC734E865D54A277A7651DFE /* BatchBuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB9173FF1C82271028A4F678 /* BatchBuilderView.swift */; };
-		C0F253E721F3135A66D25499 /* SuperJoy_Slating_App.py in Resources */ = {isa = PBXBuildFile; fileRef = 5946FA6A32343EB66545D82A /* SuperJoy_Slating_App.py */; };
+		BF5D5CE532D47EF2FE4173E2 /* sj_Slates From Spreadsheet_Template_006.aep in Resources */ = {isa = PBXBuildFile; fileRef = C77981A678E829BFB61BD3EB /* sj_Slates From Spreadsheet_Template_006.aep */; };
 		C0F4EC1098F225FA360B5CC4 /* SlateApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED381BF502339D5E129054E9 /* SlateApp.swift */; };
+		CD65C60F8F475F30ABE9B476 /* readme.txt in Resources */ = {isa = PBXBuildFile; fileRef = 1A875CF3950ED66F53FB3CCA /* readme.txt */; };
 		CD8B7C5527807EAC2B25B8C6 /* MarryAndUnslateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 533F3BBB0DAE4AF3F7D56B68 /* MarryAndUnslateViews.swift */; };
+		E088DA6919F7817E77C44B11 /* slate_worker.py in Resources */ = {isa = PBXBuildFile; fileRef = D5F7B227904C842EC402E01C /* slate_worker.py */; };
 		E57EA7DF20BB6391F6126F45 /* MarryAndUnslateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 533F3BBB0DAE4AF3F7D56B68 /* MarryAndUnslateViews.swift */; };
 		E5FA4E8D117AF233EF719BCC /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7FD5925C54CBB4858479341 /* Theme.swift */; };
 		F69AC7425F135C08F12966C2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5D63FA7FF27408C806337EA6 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		1191333ED989E593161F5439 /* readme.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = readme.txt; sourceTree = "<group>"; };
-		1610246733BF652EEEE9D778 /* sj_Slates From Spreadsheet_Template_006.aep */ = {isa = PBXFileReference; path = "sj_Slates From Spreadsheet_Template_006.aep"; sourceTree = "<group>"; };
-		236002DA651922BAF6CE29DD /* slate_worker.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = slate_worker.py; sourceTree = "<group>"; };
-		3AB0E48E418FC23FEA4EA76C /* Slates From Spreadsheet_Template_001.xlsx */ = {isa = PBXFileReference; path = "Slates From Spreadsheet_Template_001.xlsx"; sourceTree = "<group>"; };
+		029341957FD2A7F384C4384A /* SuperJoy_Slating_App.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = SuperJoy_Slating_App.py; sourceTree = "<group>"; };
+		1A875CF3950ED66F53FB3CCA /* readme.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = readme.txt; sourceTree = "<group>"; };
 		40934FD83495C61A3FEE9203 /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		533F3BBB0DAE4AF3F7D56B68 /* MarryAndUnslateViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarryAndUnslateViews.swift; sourceTree = "<group>"; };
-		5946FA6A32343EB66545D82A /* SuperJoy_Slating_App.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = SuperJoy_Slating_App.py; sourceTree = "<group>"; };
 		5D63FA7FF27408C806337EA6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		742F33AAE19B522E9CB47927 /* sj_Slates From Spreadsheet_Template_005.aep */ = {isa = PBXFileReference; path = "sj_Slates From Spreadsheet_Template_005.aep"; sourceTree = "<group>"; };
-		95E6050992D1A71773C6DF44 /* presets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = presets; sourceTree = SOURCE_ROOT; };
+		95E6050992D1A71773C6DF44 /* presets */ = {isa = PBXFileReference; lastKnownFileType = folder; name = presets; path = engine/presets; sourceTree = SOURCE_ROOT; };
 		96A34CD7DACB51EE2C2F0643 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		9D6D70E85B1CE6376ACAE414 /* sj_Slates From Spreadsheet_Template_005.aep */ = {isa = PBXFileReference; path = "sj_Slates From Spreadsheet_Template_005.aep"; sourceTree = "<group>"; };
 		A28A727F35E90995FD891226 /* SuperJoy Slating Workstation.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "SuperJoy Slating Workstation.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C77981A678E829BFB61BD3EB /* sj_Slates From Spreadsheet_Template_006.aep */ = {isa = PBXFileReference; path = "sj_Slates From Spreadsheet_Template_006.aep"; sourceTree = "<group>"; };
 		C9B391B42A655B703B50BBA3 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
+		D5F7B227904C842EC402E01C /* slate_worker.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = slate_worker.py; sourceTree = "<group>"; };
 		D7FD5925C54CBB4858479341 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		DB9173FF1C82271028A4F678 /* BatchBuilderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchBuilderView.swift; sourceTree = "<group>"; };
 		E910C40148E42B86547B5558 /* ConsoleAndSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleAndSettings.swift; sourceTree = "<group>"; };
@@ -69,6 +68,7 @@
 		EE123F1AEB0A678477F39CB5 /* MSTR-SL8R.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "MSTR-SL8R.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F43FABFF1BF65A2372AC47E7 /* WorkstationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkstationState.swift; sourceTree = "<group>"; };
 		F7348397E4BFC8498869BE33 /* PythonWorker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PythonWorker.swift; sourceTree = "<group>"; };
+		F8EAF80202FEAFA07FA2C907 /* Slates From Spreadsheet_Template_001.xlsx */ = {isa = PBXFileReference; path = "Slates From Spreadsheet_Template_001.xlsx"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -80,17 +80,25 @@
 			path = State;
 			sourceTree = "<group>";
 		};
+		6DDEC69903D0F2741D0D0159 /* engine */ = {
+			isa = PBXGroup;
+			children = (
+				1A875CF3950ED66F53FB3CCA /* readme.txt */,
+				9D6D70E85B1CE6376ACAE414 /* sj_Slates From Spreadsheet_Template_005.aep */,
+				C77981A678E829BFB61BD3EB /* sj_Slates From Spreadsheet_Template_006.aep */,
+				D5F7B227904C842EC402E01C /* slate_worker.py */,
+				F8EAF80202FEAFA07FA2C907 /* Slates From Spreadsheet_Template_001.xlsx */,
+				029341957FD2A7F384C4384A /* SuperJoy_Slating_App.py */,
+			);
+			path = engine;
+			sourceTree = "<group>";
+		};
 		7D827203B22209763A068941 = {
 			isa = PBXGroup;
 			children = (
 				95E6050992D1A71773C6DF44 /* presets */,
-				1191333ED989E593161F5439 /* readme.txt */,
-				742F33AAE19B522E9CB47927 /* sj_Slates From Spreadsheet_Template_005.aep */,
-				1610246733BF652EEEE9D778 /* sj_Slates From Spreadsheet_Template_006.aep */,
-				236002DA651922BAF6CE29DD /* slate_worker.py */,
-				3AB0E48E418FC23FEA4EA76C /* Slates From Spreadsheet_Template_001.xlsx */,
-				5946FA6A32343EB66545D82A /* SuperJoy_Slating_App.py */,
 				9BBCF82E1F6A74EEE40B93D3 /* App */,
+				6DDEC69903D0F2741D0D0159 /* engine */,
 				AA24C1E9B1B7E5683028C4FF /* Shared */,
 				9BFDEDC3BAB6B31106A904B4 /* Products */,
 			);
@@ -239,13 +247,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				F69AC7425F135C08F12966C2 /* Assets.xcassets in Resources */,
-				4B7D8068541AB5724277F80C /* Slates From Spreadsheet_Template_001.xlsx in Resources */,
-				315121F1216E9F12A88380F4 /* SuperJoy_Slating_App.py in Resources */,
+				80A6C53E93D5A1FBCB2FF6F4 /* Slates From Spreadsheet_Template_001.xlsx in Resources */,
+				0E356B2A2B86135EB9E2483D /* SuperJoy_Slating_App.py in Resources */,
 				07ADF2F01D3BB265A2758D32 /* presets in Resources */,
-				4C466A7002B96D6460489CEB /* readme.txt in Resources */,
-				6C9B1989E75934FE13A23B56 /* sj_Slates From Spreadsheet_Template_005.aep in Resources */,
-				65ED54952FF0611795DD1D3A /* sj_Slates From Spreadsheet_Template_006.aep in Resources */,
-				41542BBD54C9F8BEAA83C60A /* slate_worker.py in Resources */,
+				CD65C60F8F475F30ABE9B476 /* readme.txt in Resources */,
+				431ABB8FF44E59712494D650 /* sj_Slates From Spreadsheet_Template_005.aep in Resources */,
+				BF5D5CE532D47EF2FE4173E2 /* sj_Slates From Spreadsheet_Template_006.aep in Resources */,
+				AD0149F7CCBA0F8A14835BE5 /* slate_worker.py in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -254,13 +262,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				944AF90F06201391114674A9 /* Assets.xcassets in Resources */,
-				72A59C0488222345DDEC2359 /* Slates From Spreadsheet_Template_001.xlsx in Resources */,
-				C0F253E721F3135A66D25499 /* SuperJoy_Slating_App.py in Resources */,
+				4410ED03698D13D306E2C4F0 /* Slates From Spreadsheet_Template_001.xlsx in Resources */,
+				4EAB0B97D99E3E6F74444CB2 /* SuperJoy_Slating_App.py in Resources */,
 				B3FDFF2D218CB9AB851910DF /* presets in Resources */,
-				7FC891EB90961518BD54888F /* readme.txt in Resources */,
-				1875B6B8C5F5189AD2F788C6 /* sj_Slates From Spreadsheet_Template_005.aep in Resources */,
-				6E85A3403C8EDCDC508F14F3 /* sj_Slates From Spreadsheet_Template_006.aep in Resources */,
-				05B33620BE697CC04721CA31 /* slate_worker.py in Resources */,
+				A4A1CF0B9BAC6FDA4B695D13 /* readme.txt in Resources */,
+				4C0934D00401ABE18B4418AE /* sj_Slates From Spreadsheet_Template_005.aep in Resources */,
+				0B699E7BF2AE027B0CE63745 /* sj_Slates From Spreadsheet_Template_006.aep in Resources */,
+				E088DA6919F7817E77C44B11 /* slate_worker.py in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

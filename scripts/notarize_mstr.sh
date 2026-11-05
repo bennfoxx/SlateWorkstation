@@ -2,7 +2,7 @@
 # Notarizes the Developer ID–signed MSTR-SL8R build so it opens on any Mac without
 # Gatekeeper warnings, installs the stapled app, and makes a notarized, stapled DMG to share.
 #
-# Usage: ./notarize_mstr.sh        (run after ./install_native_mstr.sh has built the app)
+# Usage: scripts/notarize_mstr.sh        (run after scripts/install_native_mstr.sh has built the app)
 #
 # One-time setup (stores your Apple notary credentials in the login keychain):
 #   xcrun notarytool store-credentials "MSTR-SL8R-notary" \
@@ -10,7 +10,7 @@
 #   (it asks for an app-specific password from account.apple.com > Sign-In and Security)
 set -e
 setopt pipefail
-cd "${0:A:h}"
+cd "${0:A:h}/.."
 APP="MSTR-SL8R"
 PROFILE="${NOTARY_PROFILE:-MSTR-SL8R-notary}"
 BUILT="build/xcode-release/Build/Products/Release/$APP.app"
@@ -18,7 +18,7 @@ DEST="/Applications/$APP.app"
 OUTDIR="build/release"
 WORK="build/notarize"
 
-[[ -d "$BUILT" ]] || { echo "No build at $BUILT. Run ./install_native_mstr.sh first."; exit 1; }
+[[ -d "$BUILT" ]] || { echo "No build at $BUILT. Run scripts/install_native_mstr.sh first."; exit 1; }
 xcrun notarytool history --keychain-profile "$PROFILE" >/dev/null 2>&1 || {
   echo "No notary credentials saved as \"$PROFILE\". Run the one-time setup at the top of this script."; exit 1; }
 
@@ -26,7 +26,7 @@ xcrun notarytool history --keychain-profile "$PROFILE" >/dev/null 2>&1 || {
 codesign --verify --deep --strict "$BUILT"
 SIGNATURE=$(codesign -dvv "$BUILT" 2>&1)   # captured first: grep -q on a pipe trips pipefail
 [[ "$SIGNATURE" == *"Authority=Developer ID Application"* ]] || {
-  echo "$BUILT is not signed with Developer ID Application. Rebuild with ./install_native_mstr.sh."
+  echo "$BUILT is not signed with Developer ID Application. Rebuild with scripts/install_native_mstr.sh."
   echo "$SIGNATURE" | grep -E "^Authority=|^TeamIdentifier="; exit 1; }
 VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$BUILT/Contents/Info.plist")
 
@@ -70,7 +70,7 @@ cat > "$STAGE/FIRST_LAUNCH.txt" <<'TXT'
 2. The first time it drives After Effects / Media Encoder, macOS asks to allow it. Click OK.
    (If you clicked Don't Allow: System Settings > Privacy & Security > Automation.)
 TXT
-cp readme.txt "$STAGE/README.txt" 2>/dev/null || true
+cp engine/readme.txt "$STAGE/README.txt" 2>/dev/null || true
 DMG="$OUTDIR/${APP}_v$VERSION.dmg"
 rm -f "$DMG"
 hdiutil create -quiet -volname "$APP $VERSION" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
@@ -83,5 +83,6 @@ xcrun stapler validate "$DMG"
 echo "Gatekeeper:"
 spctl -a -vv -t exec "$DEST" 2>&1 | sed 's/^/  /'
 spctl -a -vv -t open --context context:primary-signature "$DMG" 2>&1 | sed 's/^/  /'
+cp -f "$DMG" "$PWD/"
 rm -rf "$WORK"
-echo "Done. Installed $DEST; share $PWD/$DMG"
+echo "Done. Installed $DEST; share $PWD/$(basename "$DMG") (also in build/release)"

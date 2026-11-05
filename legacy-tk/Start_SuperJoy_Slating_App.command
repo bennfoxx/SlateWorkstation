@@ -9,7 +9,7 @@ for PY_BIN in \
     "/usr/local/bin/python3" \
     "$(command -v python3)"; do
     if [[ -n "$PY_BIN" && -x "$PY_BIN" ]] && "$PY_BIN" -c "import tkinter" >/dev/null 2>&1; then
-        exec "$PY_BIN" "$SCRIPT_DIR/SuperJoy_Slating_App.py"
+        exec "$PY_BIN" "$SCRIPT_DIR/../engine/SuperJoy_Slating_App.py"
     fi
 done
 

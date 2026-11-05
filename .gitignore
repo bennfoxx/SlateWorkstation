@@ -14,3 +14,7 @@ xcuserdata/
 
 # Embedded Python runtime staged by scripts/prepare_python_runtime.sh
 vendor/
+
+# Legacy Tk build output
+legacy-tk/dist/
+legacy-tk/dist_mstr/

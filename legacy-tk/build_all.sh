@@ -2,18 +2,18 @@
 # Builds both SuperJoy Slating Workstation and MSTR-SL8R apps and DMGs simultaneously.
 # Usage: ./build_all.sh
 set -e
-cd "${0:A:h}"
+cd "${0:A:h}/.."
 
 echo "=========================================="
 echo "1/2 Building SuperJoy Slating Workstation"
 echo "=========================================="
-./build_dmg.sh
+legacy-tk/build_dmg.sh
 
 echo ""
 echo "=========================================="
 echo "2/2 Building MSTR-SL8R"
 echo "=========================================="
-./build_mstr_sl8r_dmg.sh
+legacy-tk/build_mstr_sl8r_dmg.sh
 
 echo ""
 echo "=========================================="

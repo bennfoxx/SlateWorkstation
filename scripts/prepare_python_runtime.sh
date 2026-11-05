@@ -35,9 +35,9 @@ mkdir -p "$DEST/lib/$PYVER/site-packages"
 cp "$SRC/BUILD"* "$DEST/" 2>/dev/null || true
 # Precompile only the stdlib modules the worker actually imports (the signed bundle is
 # read-only at run time). Running the worker without -B writes exactly those .pyc files.
-"$DEST/bin/python3" -I slate_worker.py info >/dev/null
-"$DEST/bin/python3" -I slate_worker.py parse --file "Slates From Spreadsheet_Template_001.xlsx" >/dev/null
+"$DEST/bin/python3" -I engine/slate_worker.py info >/dev/null
+"$DEST/bin/python3" -I engine/slate_worker.py parse --file "engine/Slates From Spreadsheet_Template_001.xlsx" >/dev/null
 "$DEST/bin/python3" -I -c "import email.utils, http.client, urllib.request, plistlib, uuid, hashlib" >/dev/null 2>&1 || true
-rm -rf __pycache__
+rm -rf engine/__pycache__
 echo "$STAMP" > "$DEST/.source"
 du -sh "$DEST"

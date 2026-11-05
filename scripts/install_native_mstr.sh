@@ -1,13 +1,13 @@
 #!/bin/zsh
 # Builds the native SwiftUI MSTR-SL8R (Release, signed with team 43LRM27435)
 # and installs it to /Applications/MSTR-SL8R.app.
-# Usage: ./install_native_mstr.sh            (requires: Xcode, xcodegen, python3 on this Mac)
-#        LEGACY_ACTION=keep|trash ./install_native_mstr.sh
+# Usage: scripts/install_native_mstr.sh            (requires: Xcode, xcodegen, python3 on this Mac)
+#        LEGACY_ACTION=keep|trash scripts/install_native_mstr.sh
 #   If the installed MSTR-SL8R.app is the old PyInstaller/Tk build, it is renamed to
 #   "MSTR-SL8R (Tk Legacy).app" (default, LEGACY_ACTION=keep) or moved to the Trash.
 set -e
 setopt pipefail
-cd "${0:A:h}"
+cd "${0:A:h}/.."
 APP="MSTR-SL8R"
 DEST="/Applications/$APP.app"
 OUT="build/xcode-release"
