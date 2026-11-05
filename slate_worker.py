@@ -186,6 +186,22 @@ def _require_dir(path, label):
     return p
 
 
+def _stop_children_on_terminate():
+    """The app's Stop button sends SIGTERM to this process only. Lead a process group so
+    the handler can pass it on to osascript/AME helpers started by the workflow."""
+    import signal
+    try:
+        os.setpgrp()
+    except OSError:
+        return
+
+    def _on_term(_signum, _frame):
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        os.killpg(0, signal.SIGTERM)  # includes this process, which now exits on SIGTERM
+
+    signal.signal(signal.SIGTERM, _on_term)
+
+
 def cmd_run(job):
     mode = job.get("mode")
     dry = bool(job.get("dry_run"))
@@ -297,6 +313,7 @@ def main(argv=None):
             host = HeadlessHost({"slates_dir": args.slates, "videos_dir": args.videos, "csv": args.csv})
             res = {"ok": True, "pairs": host._scan_marry_pairs()}
         elif args.cmd == "run":
+            _stop_children_on_terminate()
             raw = sys.stdin.read() if args.job == "-" else open(args.job, encoding="utf-8").read()
             res = cmd_run(json.loads(raw))
         else:

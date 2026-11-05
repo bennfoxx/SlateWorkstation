@@ -142,7 +142,7 @@ struct RunBar: View {
                 }
                 .buttonStyle(AccentButtonStyle(theme: t))
                 .disabled(!state.canRun)
-                .keyboardShortcut(.return, modifiers: [.command])
+                .help("Run (⌘↩)")
             }
             .font(t.font(12))
         }

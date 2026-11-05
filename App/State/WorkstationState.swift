@@ -45,6 +45,7 @@ final class WorkstationState {
 
     @ObservationIgnored private let worker = PythonWorker()
     @ObservationIgnored private var loading = true
+    @ObservationIgnored private var marryScanGeneration = 0
 
     init(theme: BrandTheme) {
         self.theme = theme
@@ -150,11 +151,14 @@ final class WorkstationState {
     }
 
     func scanMarryPairs() {
+        marryScanGeneration += 1
+        let generation = marryScanGeneration
         guard !slatesDir.isEmpty, !videosDir.isEmpty else { marryPairs = []; return }
         var args = ["scan-marry", "--slates", slatesDir, "--videos", videosDir]
         if !marryCSV.isEmpty { args += ["--csv", marryCSV] }
         Task {
-            guard let res = await call(args, label: nil) else { return }
+            // A newer scan (folder changed again) supersedes this one, whichever finishes last.
+            guard let res = await call(args, label: nil), generation == marryScanGeneration else { return }
             marryPairs = (res["pairs"] as? [[String: Any]] ?? []).map(MarryPair.init)
         }
     }

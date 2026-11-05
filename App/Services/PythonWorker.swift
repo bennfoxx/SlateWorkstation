@@ -22,6 +22,10 @@ final class PythonWorker: @unchecked Sendable {
     private let lock = NSLock()
     private var process: Process?
 
+    /// Writing a job to a worker that already exited must not kill the app with SIGPIPE.
+    private static let ignoreSIGPIPE: Void = { signal(SIGPIPE, SIG_IGN) }()
+    init() { _ = Self.ignoreSIGPIPE }
+
     /// Python interpreter: user override, else the embedded runtime, else a system python3.
     static func resolvePython() -> URL? {
         let fm = FileManager.default
@@ -90,11 +94,14 @@ final class PythonWorker: @unchecked Sendable {
         p.standardError = errPipe
         p.standardInput = inPipe
 
-        setProcess(p)
-        defer { setProcess(nil) }
+        // Only workflow runs are cancellable; scans (e.g. Marry rescans while a run is going)
+        // must not replace or clear the process that Stop terminates.
+        let cancellable = arguments.first == "run"
+        if cancellable { setProcess(p) }
+        defer { if cancellable { setProcess(nil) } }
 
         try p.run()
-        if let stdin { inPipe.fileHandleForWriting.write(stdin) }
+        if let stdin { try? inPipe.fileHandleForWriting.write(contentsOf: stdin) }
         try? inPipe.fileHandleForWriting.close()
 
         let errTask = Task.detached { () -> String in

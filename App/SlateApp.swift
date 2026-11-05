@@ -15,6 +15,9 @@ struct SlateApp: App {
                         state.importSpreadsheet(url.path)
                     }
                 }
+                // Route Finder/Dock opens to the existing window instead of opening a second
+                // window onto the same shared state.
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
                 .preferredColorScheme(.dark)
         }
         .windowStyle(.hiddenTitleBar)
@@ -27,7 +30,7 @@ struct SlateApp: App {
             CommandMenu("Workflow") {
                 Button("Run") { state.run() }
                     .keyboardShortcut(.return, modifiers: [.command])
-                    .disabled(state.isRunning)
+                    .disabled(!state.canRun)
                 Button("Stop Worker") { state.cancel() }
                     .keyboardShortcut(".", modifiers: [.command])
                     .disabled(!state.isRunning)
