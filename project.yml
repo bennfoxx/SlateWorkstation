@@ -19,6 +19,15 @@ settings:
     CODE_SIGN_ENTITLEMENTS: App/App.entitlements
     GENERATE_INFOPLIST_FILE: NO
     ENABLE_USER_SCRIPT_SANDBOXING: NO
+  configs:
+    # Debug keeps Xcode's automatic Apple Development signing for Run from Xcode.
+    # Release is signed for distribution outside the App Store with the Developer ID certificate.
+    Release:
+      CODE_SIGN_STYLE: Manual
+      CODE_SIGN_IDENTITY: "Developer ID Application"
+      OTHER_CODE_SIGN_FLAGS: "--timestamp"
+      # Xcode otherwise adds the get-task-allow (debugger) entitlement, which notarization rejects.
+      CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
 
 targetTemplates:
   SlateApp:

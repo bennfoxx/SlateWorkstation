@@ -6,6 +6,7 @@
 #   If the installed MSTR-SL8R.app is the old PyInstaller/Tk build, it is renamed to
 #   "MSTR-SL8R (Tk Legacy).app" (default, LEGACY_ACTION=keep) or moved to the Trash.
 set -e
+setopt pipefail
 cd "${0:A:h}"
 APP="MSTR-SL8R"
 DEST="/Applications/$APP.app"
@@ -15,12 +16,19 @@ OUT="build/xcode-release"
 if [[ ! -f SlateWorkstation.xcodeproj/project.pbxproj || project.yml -nt SlateWorkstation.xcodeproj/project.pbxproj ]]; then
   xcodegen generate --quiet
 fi
-xcodebuild -project SlateWorkstation.xcodeproj -scheme "$APP" -configuration Release \
-  -derivedDataPath "$OUT" -allowProvisioningUpdates build | grep -E "error|BUILD" || true
 BUILT="$OUT/Build/Products/Release/$APP.app"
-[[ -d "$BUILT" ]] || { echo "Build failed: $BUILT missing"; exit 1; }
+# A failed build must not fall through to installing the previous build still in $OUT.
+if ! xcodebuild -project SlateWorkstation.xcodeproj -scheme "$APP" -configuration Release \
+  -derivedDataPath "$OUT" -allowProvisioningUpdates build > "$OUT.log" 2>&1; then
+  grep -E "error:|BUILD FAILED" "$OUT.log" | tail -20
+  echo "Build failed (full log: $OUT.log)"; exit 1
+fi
+grep -E "BUILD SUCCEEDED" "$OUT.log" || true
 codesign --verify --deep --strict "$BUILT"
+codesign -dvv "$BUILT" 2>&1 | grep -E "^Authority=|^TeamIdentifier=|^Timestamp=" || true
 
+# Quit only the installed copy (never a build running from Xcode / DerivedData) before replacing it
+pkill -f "^$DEST/Contents/MacOS/" 2>/dev/null || true
 if [[ -d "$DEST" ]]; then
   existing_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$DEST/Contents/Info.plist" 2>/dev/null || true)
   if [[ "$existing_id" == "com.benfoxmedia.mstrsl8r" ]]; then
@@ -38,8 +46,6 @@ if [[ -d "$DEST" ]]; then
   fi
 fi
 
-# Quit only the installed copy (never a build running from Xcode / DerivedData)
-pkill -f "^$DEST/Contents/MacOS/" 2>/dev/null || true
 ditto "$BUILT" "$DEST"
 codesign --verify --deep --strict "$DEST"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$DEST"
