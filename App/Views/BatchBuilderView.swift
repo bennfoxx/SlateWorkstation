@@ -64,6 +64,9 @@ struct BatchBuilderView: View {
                 Button { state.importSpreadsheetWithPanel() } label: { Label("Import Sheet…", systemImage: "tablecells") }
                     .buttonStyle(AccentButtonStyle(theme: t, prominent: false))
                     .help("Load an .xlsx / .csv / .tsv slate sheet (replaces the queue)")
+                Button { state.newSheetTemplate() } label: { Label("New Sheet Template…", systemImage: "doc.badge.plus") }
+                    .buttonStyle(AccentButtonStyle(theme: t, prominent: false))
+                    .help("Save a fresh copy of the spreadsheet template and open it")
                 Menu {
                     Text("Aspects per video (none = from file name)")
                     ForEach(Aspect.allCases) { a in

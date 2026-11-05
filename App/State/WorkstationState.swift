@@ -127,6 +127,32 @@ final class WorkstationState {
         importSpreadsheet(url.path)
     }
 
+    /// Saves a fresh copy of the bundled sheet template, opens it in the default spreadsheet app and links it.
+    func newSheetTemplate() {
+        guard let src = Bundle.main.url(forResource: "Slates From Spreadsheet_Template_001", withExtension: "xlsx") else {
+            appendLog(.error, "Bundled spreadsheet template not found"); return
+        }
+        let panel = NSSavePanel()
+        panel.title = "Save New Copy of Spreadsheet Template"
+        panel.allowedContentTypes = [UTType(filenameExtension: "xlsx")].compactMap { $0 }
+        let f = DateFormatter(); f.dateFormat = "yyyy_MM_dd"
+        panel.nameFieldStringValue = "Slates From Spreadsheet_\(f.string(from: Date())).xlsx"
+        let start = [spreadsheetPath, outputDir, videosDir].first { !$0.isEmpty }
+        if let start { panel.directoryURL = URL(fileURLWithPath: start).deletingLastPathComponent() }
+        guard panel.runModal() == .OK, let dest = panel.url else { return }
+        do {
+            if FileManager.default.fileExists(atPath: dest.path) { try FileManager.default.removeItem(at: dest) }
+            try FileManager.default.copyItem(at: src, to: dest)
+            spreadsheetPath = dest.path
+            mode = .batch
+            NSWorkspace.shared.activateFileViewerSelecting([dest])
+            NSWorkspace.shared.open(dest)
+            appendLog(.info, "Created sheet template: \(dest.path)")
+        } catch {
+            appendLog(.error, "Could not save template copy: \(error.localizedDescription)")
+        }
+    }
+
     func importSpreadsheet(_ path: String) {
         spreadsheetPath = path
         mode = .batch

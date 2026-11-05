@@ -26,6 +26,8 @@ struct SlateApp: App {
             CommandGroup(after: .newItem) {
                 Button("Import Spreadsheet…") { state.importSpreadsheetWithPanel() }
                     .keyboardShortcut("o")
+                Button("New Sheet Template…") { state.newSheetTemplate() }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
             }
             CommandMenu("Workflow") {
                 Button("Run") { state.run() }
