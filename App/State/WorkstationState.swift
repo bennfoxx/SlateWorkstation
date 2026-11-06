@@ -6,6 +6,12 @@ import UniformTypeIdentifiers
 @MainActor
 @Observable
 final class WorkstationState {
+    static var todayString: String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy_MM_dd"
+        return f.string(from: Date())
+    }
+
     // Branding
     var theme: BrandTheme
 
@@ -13,6 +19,7 @@ final class WorkstationState {
     var mode: WorkflowMode = .batch
     var fps = "23.976"
     var aspect: Aspect = .r16x9
+    var slateCodec: SlateCodec = .h264MOV { didSet { save() } }
     var autoTranscode = true { didSet { save() } }
     var dryRun = false
     var outputDir = "" { didSet { save() } }
@@ -23,7 +30,13 @@ final class WorkstationState {
     var videosDir = "" { didSet { save() } }
     var spreadsheetPath = ""
     var campaign = CampaignFields() { didSet { save() } }
-    var rows: [SlateRow] = []
+    private var isApplyingCampaign = false
+    var rows: [SlateRow] = [] {
+        didSet {
+            guard !isApplyingCampaign else { return }
+            syncCampaignFromRows()
+        }
+    }
     var selection: Set<SlateRow.ID> = []
     var scanAspects: Set<Aspect> = []
 
@@ -55,9 +68,15 @@ final class WorkstationState {
         videosDir = d.string(forKey: "videosDir") ?? ""
         slatesDir = d.string(forKey: "slatesDir") ?? ""
         unslateDir = d.string(forKey: "unslateDir") ?? ""
+        if let rawCodec = d.string(forKey: "slateCodec"), let c = SlateCodec(rawValue: rawCodec) {
+            slateCodec = c
+        }
         if d.object(forKey: "autoTranscode") != nil { autoTranscode = d.bool(forKey: "autoTranscode") }
         if let data = d.data(forKey: "campaign"), let c = try? JSONDecoder().decode(CampaignFields.self, from: data) {
             campaign = c
+        }
+        if campaign.copyright.isEmpty || campaign.copyright == "© 2026" {
+            campaign.copyright = CampaignFields.defaultCopyright(for: campaign.client)
         }
         loading = false
     }
@@ -70,6 +89,7 @@ final class WorkstationState {
         d.set(videosDir, forKey: "videosDir")
         d.set(slatesDir, forKey: "slatesDir")
         d.set(unslateDir, forKey: "unslateDir")
+        d.set(slateCodec.rawValue, forKey: "slateCodec")
         d.set(autoTranscode, forKey: "autoTranscode")
         d.set(try? JSONEncoder().encode(campaign), forKey: "campaign")
     }
@@ -82,6 +102,8 @@ final class WorkstationState {
         r.title = ""
         r.aspect = aspect.rawValue
         r["trt"] = ":30"
+        r["date"] = Self.todayString
+        r["day"] = Self.todayString
         applyCampaign(to: &r, overwrite: true)
         rows.append(r)
         selection = [r.id]
@@ -102,7 +124,76 @@ final class WorkstationState {
 
     /// Push the campaign card's fields into every row (blank fields only, unless overwrite).
     func applyCampaignToAll(overwrite: Bool) {
+        isApplyingCampaign = true
+        defer { isApplyingCampaign = false }
         for i in rows.indices { applyCampaign(to: &rows[i], overwrite: overwrite) }
+    }
+
+    /// Auto-update the campaign card to match current batch rows.
+    /// If multiple clients/campaigns exist in the batch, default the changer to empty.
+    func syncCampaignFromRows() {
+        guard !rows.isEmpty else { return }
+
+        func distinctValues(for keys: [String]) -> [String] {
+            var seen = Set<String>()
+            var list: [String] = []
+            for r in rows {
+                for k in keys {
+                    let v = r[k].trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !v.isEmpty {
+                        if !seen.contains(v) {
+                            seen.insert(v)
+                            list.append(v)
+                        }
+                        break
+                    }
+                }
+            }
+            return list
+        }
+
+        let clients = distinctValues(for: ["client", "brand", "advertiser"])
+        let workspaces = distinctValues(for: ["workspace", "workspace_artist"])
+        let agencies = distinctValues(for: ["agency"])
+        let dates = distinctValues(for: ["date", "day"])
+        let audios = distinctValues(for: ["audio"])
+        let copyrights = distinctValues(for: ["copyright"])
+
+        // If multiple clients/campaigns in batch, default changer to empty
+        campaign.client = (clients.count == 1) ? clients[0] : ""
+        campaign.workspace = (workspaces.count == 1) ? workspaces[0] : ""
+
+        if agencies.count == 1 {
+            campaign.agency = agencies[0]
+        } else if agencies.count > 1 {
+            campaign.agency = ""
+        }
+
+        if dates.count == 1 && dates[0] >= Self.todayString {
+            campaign.date = dates[0]
+        } else {
+            campaign.date = Self.todayString
+        }
+
+        if audios.count == 1 {
+            campaign.audio = audios[0]
+        } else if audios.count > 1 {
+            campaign.audio = ""
+        }
+
+        if copyrights.count == 1 {
+            campaign.copyright = copyrights[0]
+        } else if copyrights.count > 1 {
+            campaign.copyright = ""
+        } else {
+            campaign.copyright = CampaignFields.defaultCopyright(for: campaign.client)
+        }
+
+        let flameValues = Set(rows.map(\.flame))
+        campaign.flame = (flameValues.count == 1) ? (flameValues.first ?? false) : false
+
+        let nfaValues = Set(rows.map { ["nfa", "y", "yes", "true", "1"].contains($0["nfa"].lowercased()) })
+        campaign.nfa = (nfaValues.count == 1) ? (nfaValues.first ?? false) : false
     }
 
     private func applyCampaign(to r: inout SlateRow, overwrite: Bool) {
@@ -158,7 +249,15 @@ final class WorkstationState {
         mode = .batch
         Task {
             guard let res = await call(["parse", "--file", path], label: "Parsing \((path as NSString).lastPathComponent)") else { return }
-            let parsed = (res["rows"] as? [[String: Any]] ?? []).map(SlateRow.init(any:))
+            var parsed = (res["rows"] as? [[String: Any]] ?? []).map(SlateRow.init(any:))
+            let today = Self.todayString
+            for i in parsed.indices {
+                let d = parsed[i]["date"].trimmingCharacters(in: .whitespacesAndNewlines)
+                if d.isEmpty || d < today || d.uppercased().hasPrefix("YYYY") {
+                    parsed[i]["date"] = today
+                    parsed[i]["day"] = today
+                }
+            }
             rows = parsed
             appendLog(.info, "Imported \(parsed.count) row(s) from \((path as NSString).lastPathComponent)")
         }
@@ -206,6 +305,7 @@ final class WorkstationState {
             "theme": theme.key,
             "fps": fps,
             "aspect": aspect.rawValue,
+            "slate_codec": slateCodec.rawValue,
             "output_dir": outputDir,
             "auto_transcode": autoTranscode,
             "dry_run": dryRun,
@@ -290,12 +390,88 @@ final class WorkstationState {
         if log.count > 2000 { log.removeFirst(log.count - 2000) }
     }
 
+    func revealPreviewsInFinder() {
+        if let first = previews.first {
+            let url = URL(fileURLWithPath: first.imagePath)
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
+    }
+
+    func exportThumbnailSheet() {
+        guard let first = previews.first else { return }
+        let previewsDir = URL(fileURLWithPath: first.imagePath).deletingLastPathComponent().path
+        let projectFilesDir = URL(fileURLWithPath: previewsDir).deletingLastPathComponent().path
+        let outDir = URL(fileURLWithPath: projectFilesDir).deletingLastPathComponent().path
+
+        let clientToken = campaign.client.isEmpty ? "Slates" : campaign.client.replacingOccurrences(of: " ", with: "_")
+        let outputBase = "\(outDir)/\(clientToken)_Contact_Sheet"
+        let tpl = spreadsheetPath  // empty: order and metadata come from the preview file names
+
+        appendLog(.info, "Generating high-res thumbnail sheet for \(previews.count) slates...")
+
+        guard let pythonURL = PythonWorker.resolvePython() else {
+            appendLog(.error, "Could not find python3 to generate thumbnail sheet.")
+            return
+        }
+
+        let fm = FileManager.default
+        var scriptURL: URL? = Bundle.main.resourceURL?.appendingPathComponent("make_contact_sheet.py")
+        if scriptURL == nil || !fm.fileExists(atPath: scriptURL!.path) {
+            let repoCandidates = ["tools/make_contact_sheet.py", "engine/make_contact_sheet.py"]
+            for c in repoCandidates {
+                if fm.fileExists(atPath: c) {
+                    scriptURL = URL(fileURLWithPath: c)
+                    break
+                }
+            }
+        }
+
+        guard let script = scriptURL else {
+            appendLog(.error, "Could not locate make_contact_sheet.py")
+            return
+        }
+
+        Task {
+            let proc = Process()
+            proc.executableURL = pythonURL
+            proc.arguments = [script.path, previewsDir, tpl, outputBase,
+                              "--client", campaign.client, "--agency", campaign.agency,
+                              "--workspace", campaign.workspace, "--date", campaign.date]
+
+            do {
+                try proc.run()
+                proc.waitUntilExit()
+
+                if proc.terminationStatus == 0 {
+                    let pdfPath = outputBase + ".pdf"
+                    let pngPath = outputBase + ".png"
+                    appendLog(.info, "Thumbnail sheet generated: \(pdfPath)")
+
+                    if fm.fileExists(atPath: pdfPath) {
+                        let openProc = Process()
+                        openProc.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                        openProc.arguments = ["-a", "Preview", pdfPath]
+                        try? openProc.run()
+                    }
+                    if fm.fileExists(atPath: pngPath) {
+                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: pngPath)])
+                    }
+                } else {
+                    appendLog(.error, "Contact sheet generator exited with status \(proc.terminationStatus)")
+                }
+            } catch {
+                appendLog(.error, "Failed to run contact sheet generator: \(error.localizedDescription)")
+            }
+        }
+    }
+
     // MARK: - Panels
 
     func pick(files: Bool, types: [String] = []) -> URL? {
         let panel = NSOpenPanel()
         panel.canChooseFiles = files
         panel.canChooseDirectories = !files
+        panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
         if files, !types.isEmpty {
             panel.allowedContentTypes = types.compactMap { UTType(filenameExtension: $0) }

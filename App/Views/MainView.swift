@@ -103,6 +103,15 @@ struct RunBar: View {
             HStack(alignment: .bottom, spacing: 14) {
                 PathField(label: "Output Folder (optional)", path: $state.outputDir,
                           placeholder: "Default: next to the source media")
+                if state.mode == .batch && state.slatesOnly {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("SLATE CODEC").font(t.font(10, weight: .bold)).foregroundStyle(t.textMuted)
+                        Picker("", selection: $state.slateCodec) {
+                            ForEach(SlateCodec.allCases) { Text($0.label).tag($0) }
+                        }
+                        .labelsHidden().frame(width: 175)
+                    }
+                }
                 VStack(alignment: .leading, spacing: 5) {
                     Text("FRAME RATE").font(t.font(10, weight: .bold)).foregroundStyle(t.textMuted)
                     Picker("", selection: $state.fps) {

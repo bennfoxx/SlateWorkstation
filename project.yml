@@ -51,6 +51,8 @@ targetTemplates:
         buildPhase: resources
       - path: "engine/Slates From Spreadsheet_Template_001.xlsx"
         buildPhase: resources
+      - path: engine/make_contact_sheet.py
+        buildPhase: resources
       - path: engine/readme.txt
         buildPhase: resources
     postBuildScripts:

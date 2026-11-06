@@ -7,9 +7,26 @@ struct PreviewGallery: View {
     var body: some View {
         let t = state.theme
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(spacing: 10) {
                 SectionTitle(text: "Slate Previews (\(state.previews.count))", symbol: "photo.on.rectangle")
                 Spacer()
+
+                Button {
+                    state.revealPreviewsInFinder()
+                } label: {
+                    Label("Reveal in Finder", systemImage: "folder")
+                }
+                .buttonStyle(AccentButtonStyle(theme: t, prominent: false))
+                .disabled(state.previews.isEmpty)
+
+                Button {
+                    state.exportThumbnailSheet()
+                } label: {
+                    Label("Thumbnail Sheet", systemImage: "square.grid.3x3.fill")
+                }
+                .buttonStyle(AccentButtonStyle(theme: t, prominent: true))
+                .disabled(state.previews.isEmpty)
+
                 Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
             }
             ScrollView {

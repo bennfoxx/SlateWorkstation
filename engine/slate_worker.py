@@ -135,8 +135,9 @@ class HeadlessHost:
         fps = engine.parse_fps(str(fps)) if fps not in (None, "") else engine.DEFAULT_FPS
         if fps is None:
             raise ValueError("Invalid frame rate. Use a number between 1 and 120.")
+        self.slate_codec = job.get("slate_codec") or "h264_mov"
         w, h = engine.ASPECT_RESOLUTIONS.get(self.aspect_var.get(), (1920, 1080))
-        self.render_settings = {"fps": fps, "width": w, "height": h}
+        self.render_settings = {"fps": fps, "width": w, "height": h, "slate_codec": self.slate_codec}
 
     # --- UI hooks used by the workflow methods ---
     def _alert(self, kind, title, message):

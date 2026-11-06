@@ -182,13 +182,22 @@ struct CampaignCard: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionTitle(text: "Campaign", symbol: "megaphone")
             LabeledField(label: "Agency", text: $state.campaign.agency, prompt: "MARTIN*")
-            LabeledField(label: "Client", text: $state.campaign.client)
+            LabeledField(label: "Client", text: Binding(
+                get: { state.campaign.client },
+                set: { newClient in
+                    let oldDefault = CampaignFields.defaultCopyright(for: state.campaign.client)
+                    state.campaign.client = newClient
+                    if state.campaign.copyright.isEmpty || state.campaign.copyright == oldDefault || state.campaign.copyright == "© 2026" {
+                        state.campaign.copyright = CampaignFields.defaultCopyright(for: newClient)
+                    }
+                }
+            ))
             HStack {
                 LabeledField(label: "Date", text: $state.campaign.date, prompt: "YYYY_MM_DD (today)")
                 LabeledField(label: "Audio", text: $state.campaign.audio, prompt: "STEREO")
             }
             LabeledField(label: "Workspace / Artist", text: $state.campaign.workspace)
-            LabeledField(label: "Copyright", text: $state.campaign.copyright, prompt: "© 2026")
+            LabeledField(label: "Copyright", text: $state.campaign.copyright, prompt: CampaignFields.defaultCopyright(for: state.campaign.client))
             HStack {
                 Toggle("Flame logo", isOn: $state.campaign.flame)
                 Toggle("NFA", isOn: $state.campaign.nfa)

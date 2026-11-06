@@ -564,7 +564,7 @@ def wrap_jsx_with_status(jsx_body, status_path):
         "    lines.push('    if (!fe) throw new Error(\"app.getFrontend() unavailable\");');\n"
         "    for (var ti = 0; ti < tasks.length; ti++) {\n"
         "      var tk = tasks[ti];\n"
-        "      var presetPth = (tk.format === 'QuickTime') ? proresPresetPath : h264PresetPath;\n"
+        "      var presetPth = tk.preset || ((tk.format === 'QuickTime') ? proresPresetPath : h264PresetPath);\n"
         "      lines.push('    var ew_' + ti + ' = fe.addDLToBatch(' +\n"
         "        __sjQuote(aepFilePath) + ', ' +\n"
         "        __sjQuote(tk.format) + ', ' +\n"
@@ -802,10 +802,12 @@ def ensure_ame_presets(presets_dir):
     Also resolves the bundled After Effects OutputModule seed project."""
     os.makedirs(presets_dir, exist_ok=True)
     prores_dst = os.path.join(presets_dir, "SuperJoy_Apple_ProRes_422_HQ_MatchSource.epr")
+    proxy_dst = os.path.join(presets_dir, "SuperJoy_Apple_ProRes_422_Proxy_MatchSource.epr")
     h264_dst = os.path.join(presets_dir, "SuperJoy_H264_MatchSource_25Mbps.epr")
 
     bundled_presets_dir = os.path.join(_APP_DIR, "presets")
     bundled_prores = os.path.join(bundled_presets_dir, "SuperJoy_Apple_ProRes_422_HQ_MatchSource.epr")
+    bundled_proxy = os.path.join(bundled_presets_dir, "SuperJoy_Apple_ProRes_422_Proxy_MatchSource.epr")
     bundled_h264 = os.path.join(bundled_presets_dir, "SuperJoy_H264_MatchSource_25Mbps.epr")
     bundled_seed_aep = os.path.join(bundled_presets_dir, "SuperJoy_AE_OutputTemplates_Seed.aep")
 
@@ -821,6 +823,19 @@ def ensure_ame_presets(presets_dir):
         )
         if prores_candidates and os.path.isfile(prores_candidates[0]):
             shutil.copyfile(prores_candidates[0], prores_dst)
+
+    # 1b. Resolve Apple ProRes 422 Proxy (Match Source)
+    if os.path.isfile(bundled_proxy):
+        shutil.copyfile(bundled_proxy, proxy_dst)
+    else:
+        proxy_candidates = sorted(
+            glob.glob(
+                "/Applications/Adobe Media Encoder */Adobe Media Encoder *.app/Contents/MediaIO/systempresets/3F3F3F3F_4D6F6F56/Apple ProRes 422 Proxy.epr"
+            ),
+            reverse=True,
+        )
+        if proxy_candidates and os.path.isfile(proxy_candidates[0]):
+            shutil.copyfile(proxy_candidates[0], proxy_dst)
 
     # 2. Resolve H.264 Match Source 25 Mbps
     if os.path.isfile(bundled_h264):
@@ -858,6 +873,7 @@ def ensure_ame_presets(presets_dir):
 
     return {
         "prores_epr": prores_dst if os.path.isfile(prores_dst) else "",
+        "prores_proxy_epr": proxy_dst if os.path.isfile(proxy_dst) else "",
         "h264_epr": h264_dst if os.path.isfile(h264_dst) else "",
         "ae_seed_aep": bundled_seed_aep if os.path.isfile(bundled_seed_aep) else "",
     }
@@ -4744,19 +4760,22 @@ class SuperJoyWorkstation:
             return false;
         }}
 
-        function queueProResAndH264(comp, proresPath, h264Path) {{
+        function queueProResAndH264(comp, proresPath, h264Path, isProxy, customEpr) {{
             var compGuid = "";
             try {{ compGuid = String(comp.dynamicLinkGUID || ""); }} catch (eGuid) {{}}
             if (proresPath) {{
                 var rqPro = app.project.renderQueue.items.add(comp);
                 var omPro = rqPro.outputModule(1);
-                applyOutputTemplateSafe(omPro, ["Apple ProRes 422 HQ", "High Quality", "Lossless"]);
+                var proTemplates = isProxy
+                    ? ["Apple ProRes 422 Proxy", "Apple ProRes 422 HQ", "High Quality", "Lossless"]
+                    : ["Apple ProRes 422 HQ", "High Quality", "Lossless"];
+                applyOutputTemplateSafe(omPro, proTemplates);
                 try {{
                     omPro.setSettings({{"Output Audio": "On", "Output File Info": {{"Subfolder Path": ""}}}});
                 }} catch (eAudP) {{}}
                 omPro.file = new File(proresPath);
                 if (compGuid) {{
-                    __SJ_STATUS.ameTasks.push({{guid: compGuid, format: "QuickTime", output: proresPath}});
+                    __SJ_STATUS.ameTasks.push({{guid: compGuid, format: "QuickTime", preset: customEpr || "", output: proresPath}});
                 }}
             }}
             if (h264Path) {{
@@ -5462,10 +5481,12 @@ class SuperJoyWorkstation:
 
         render_cfg = dict(getattr(self, "render_settings", {"fps": DEFAULT_FPS, "width": 1920, "height": 1080}))
         render_cfg["prores_epr"] = presets.get("prores_epr", "")
+        render_cfg["prores_proxy_epr"] = presets.get("prores_proxy_epr", "")
         render_cfg["h264_epr"] = presets.get("h264_epr", "")
         render_cfg["ae_seed_aep"] = presets.get("ae_seed_aep", "")
         render_cfg["auto_transcode"] = auto_transcode
         render_cfg["slates_only"] = bool(slates_only)
+        render_cfg["slate_codec"] = getattr(self, "slate_codec", None) or render_cfg.get("slate_codec", "h264_mov")
 
         # In Standalone Slates mode, place all supporting assets (AEP, presets, previews, wav, log, temp scripts)
         # in the dedicated '_Project_Files' folder so only the .mov slates + '_Project_Files' exist at root.
@@ -5559,15 +5580,16 @@ class SuperJoyWorkstation:
                     out_stem += suffix_n
                 else:
                     used_stems[out_stem] = 1
-                slated_prores_file = os.path.join(row_folders["slated_prores"], f"{out_stem}.mov")
-                slated_h264_file = ""
+                sc = render_cfg.get("slate_codec", "h264_mov")
+                ext = ".mp4" if sc == "h264_mp4" else ".mov"
+                slated_dest_file = os.path.join(row_folders["slated_prores"], f"{out_stem}{ext}")
                 preview_png_file = os.path.join(previews_dir, f"{out_stem}_preview.png")
                 job_entry = {
                     "video_path": "",
                     "slate_only": True,
-                    "final_output": slated_prores_file,
-                    "slated_prores_output": slated_prores_file,
-                    "slated_h264_output": slated_h264_file,
+                    "final_output": slated_dest_file,
+                    "slated_prores_output": slated_dest_file if ext == ".mov" else "",
+                    "slated_h264_output": slated_dest_file if ext == ".mp4" else "",
                     "unslated_prores_output": "",
                     "unslated_h264_output": "",
                     "preview_png": preview_png_file,
@@ -5577,10 +5599,11 @@ class SuperJoyWorkstation:
                     "aspect": asp,
                     "width": tw,
                     "height": th,
+                    "slate_codec": sc,
                 }
                 ae_jobs.append(job_entry)
                 log_entries.append(
-                    f"[SUCCESS] Standalone Slate {ad_id} [{format_resolution_label(asp)}] -> {out_stem}.mov"
+                    f"[SUCCESS] Standalone Slate {ad_id} [{format_resolution_label(asp)}] -> {out_stem}{ext} ({sc})"
                 )
                 success_count += 1
                 continue
@@ -5702,6 +5725,31 @@ class SuperJoyWorkstation:
                     os.remove(jsx_path + ".status")
             except OSError:
                 pass
+
+            # Post-transcode standalone slates to visually lossless QuickTime H.264 when requested
+            if slates_only and render_cfg.get("slate_codec") == "h264_mov":
+                for j in ae_jobs:
+                    mov_file = j.get("slated_prores_output") or j.get("final_output")
+                    if mov_file and os.path.isfile(mov_file):
+                        tmp_h264 = mov_file + ".h264_tmp.mov"
+                        cmd = [
+                            "ffmpeg", "-y", "-v", "error",
+                            "-i", mov_file,
+                            "-c:v", "libx264",
+                            "-crf", "10",
+                            "-preset", "slow",
+                            "-pix_fmt", "yuv420p",
+                            "-c:a", "copy",
+                            tmp_h264,
+                        ]
+                        r = subprocess.run(cmd)
+                        if r.returncode == 0 and os.path.isfile(tmp_h264) and os.path.getsize(tmp_h264) > 0:
+                            os.replace(tmp_h264, mov_file)
+                        elif os.path.isfile(tmp_h264):
+                            try:
+                                os.remove(tmp_h264)
+                            except OSError:
+                                pass
 
             # Generate static first-frame preview PNGs for in-app preview viewer using macOS native Quick Look
             created_previews = []
@@ -6008,19 +6056,22 @@ open "{primary_target}"
             return false;
         }}
 
-        function queueProResAndH264(comp, proresPath, h264Path) {{
+        function queueProResAndH264(comp, proresPath, h264Path, isProxy, customEpr) {{
             var compGuid = "";
             try {{ compGuid = String(comp.dynamicLinkGUID || ""); }} catch (eGuid) {{}}
             if (proresPath) {{
                 var rqPro = app.project.renderQueue.items.add(comp);
                 var omPro = rqPro.outputModule(1);
-                applyOutputTemplateSafe(omPro, ["Apple ProRes 422 HQ", "High Quality", "Lossless"]);
+                var proTemplates = isProxy
+                    ? ["Apple ProRes 422 Proxy", "Apple ProRes 422 HQ", "High Quality", "Lossless"]
+                    : ["Apple ProRes 422 HQ", "High Quality", "Lossless"];
+                applyOutputTemplateSafe(omPro, proTemplates);
                 try {{
                     omPro.setSettings({{"Output Audio": "On", "Output File Info": {{"Subfolder Path": ""}}}});
                 }} catch (eAudP) {{}}
                 omPro.file = new File(proresPath);
                 if (compGuid) {{
-                    __SJ_STATUS.ameTasks.push({{guid: compGuid, format: "QuickTime", output: proresPath}});
+                    __SJ_STATUS.ameTasks.push({{guid: compGuid, format: "QuickTime", preset: customEpr || "", output: proresPath}});
                 }}
             }}
             if (h264Path) {{
@@ -6361,14 +6412,23 @@ open "{primary_target}"
                 skipped.push(slateId + " (WARNING: spreadsheet says " + job.aspect + " but master video is " + vidAspect + " — slate will be scaled to fit)");
             }}
 
-            // Standalone Slate Only mode: queue the populated slateComp to ProRes (.mov)
+            // Standalone Slate Only mode: queue the populated slateComp
             if (isSlateOnly) {{
                 if (slateComp) {{
-                    queueProResAndH264(
-                        slateComp,
-                        job.slated_prores_output || job.final_output,
-                        job.slated_h264_output || ""
-                    );
+                    var sCodec = job.slate_codec || cfg.slate_codec || "h264_mov";
+                    var isProxy = (sCodec === "prores_proxy");
+                    var customEpr = isProxy ? (cfg.prores_proxy_epr || "") : (cfg.prores_epr || "");
+                    if (sCodec === "h264_mp4") {{
+                        queueProResAndH264(slateComp, "", job.slated_h264_output || job.final_output, false, "");
+                    }} else {{
+                        queueProResAndH264(
+                            slateComp,
+                            job.slated_prores_output || job.final_output,
+                            "",
+                            isProxy,
+                            customEpr
+                        );
+                    }}
                 }}
                 continue;
             }}

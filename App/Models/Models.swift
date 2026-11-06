@@ -36,6 +36,24 @@ enum Aspect: String, CaseIterable, Identifiable {
     var ratio: CGFloat { CGFloat(size.w) / CGFloat(size.h) }
 }
 
+/// Standalone slate codec choice
+enum SlateCodec: String, CaseIterable, Identifiable {
+    case h264MOV = "h264_mov"
+    case proresHQ = "prores_hq"
+    case proresProxy = "prores_proxy"
+    case h264MP4 = "h264_mp4"
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .h264MOV: return "QuickTime H.264 (~2MB)"
+        case .proresHQ: return "ProRes 422 HQ (~56MB)"
+        case .proresProxy: return "ProRes 422 Proxy (~10MB)"
+        case .h264MP4: return "H.264 MP4 (~2MB)"
+        }
+    }
+}
+
 let fpsPresets = ["23.976", "24", "25", "29.97", "30", "50", "59.94", "60"]
 
 /// One slate row. Keys match the engine's canonical slate keys (normalize_slate_row);
@@ -88,9 +106,15 @@ struct CampaignFields: Codable, Equatable {
     var date = ""
     var workspace = ""
     var audio = "STEREO"
-    var copyright = ""
+    var copyright = "© 2026 [Client Name]. All Rights Reserved."
     var flame = false
     var nfa = false
+
+    static func defaultCopyright(for client: String) -> String {
+        let name = client.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clientLabel = name.isEmpty ? "[Client Name]" : name
+        return "© 2026 \(clientLabel). All Rights Reserved."
+    }
 
     var json: String {
         (try? String(data: JSONEncoder().encode(self), encoding: .utf8)) ?? "{}"

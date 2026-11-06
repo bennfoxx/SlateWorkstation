@@ -15,6 +15,7 @@
 		15E4642C4435AA5F41E6D12C /* IngestState.swift in Sources */ = {isa = PBXBuildFile; fileRef = C35F15FCA85C69A958E4E7C6 /* IngestState.swift */; };
 		15F78189BAF6464CEDE1A666 /* ConsoleAndSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E910C40148E42B86547B5558 /* ConsoleAndSettings.swift */; };
 		191735E6F2228312638ABBB2 /* PythonWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08E2A1AEF6AC420263BBE745 /* PythonWorker.swift */; };
+		24C426B094CFB7FEC5E3029A /* make_contact_sheet.py in Resources */ = {isa = PBXBuildFile; fileRef = 9165CC80555626ACA04A12A3 /* make_contact_sheet.py */; };
 		24FAA2224B2FE83689E0E12D /* PythonWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08E2A1AEF6AC420263BBE745 /* PythonWorker.swift */; };
 		2BE1DAF507831F28A27E6E21 /* WorkstationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F43FABFF1BF65A2372AC47E7 /* WorkstationState.swift */; };
 		2D260D9875F1F983313122C3 /* LogModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A65B2504188E35A66C791146 /* LogModels.swift */; };
@@ -60,6 +61,7 @@
 		CD8B7C5527807EAC2B25B8C6 /* MarryAndUnslateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 533F3BBB0DAE4AF3F7D56B68 /* MarryAndUnslateViews.swift */; };
 		E088DA6919F7817E77C44B11 /* slate_worker.py in Resources */ = {isa = PBXBuildFile; fileRef = D5F7B227904C842EC402E01C /* slate_worker.py */; };
 		E57EA7DF20BB6391F6126F45 /* MarryAndUnslateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 533F3BBB0DAE4AF3F7D56B68 /* MarryAndUnslateViews.swift */; };
+		EDD97EFF4E9396554DADB1A9 /* make_contact_sheet.py in Resources */ = {isa = PBXBuildFile; fileRef = 9165CC80555626ACA04A12A3 /* make_contact_sheet.py */; };
 		F69AC7425F135C08F12966C2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5D63FA7FF27408C806337EA6 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -77,6 +79,7 @@
 		533F3BBB0DAE4AF3F7D56B68 /* MarryAndUnslateViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarryAndUnslateViews.swift; sourceTree = "<group>"; };
 		5D63FA7FF27408C806337EA6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		5F2EB7F3DE7510A73576A02B /* IngestJob.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IngestJob.swift; sourceTree = "<group>"; };
+		9165CC80555626ACA04A12A3 /* make_contact_sheet.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = make_contact_sheet.py; sourceTree = "<group>"; };
 		95E6050992D1A71773C6DF44 /* presets */ = {isa = PBXFileReference; lastKnownFileType = folder; name = presets; path = engine/presets; sourceTree = SOURCE_ROOT; };
 		96A34CD7DACB51EE2C2F0643 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		9D6D70E85B1CE6376ACAE414 /* sj_Slates From Spreadsheet_Template_005.aep */ = {isa = PBXFileReference; path = "sj_Slates From Spreadsheet_Template_005.aep"; sourceTree = "<group>"; };
@@ -110,6 +113,7 @@
 			isa = PBXGroup;
 			children = (
 				0714A98747B3D6667DAB13F5 /* ingest_worker.py */,
+				9165CC80555626ACA04A12A3 /* make_contact_sheet.py */,
 				1A875CF3950ED66F53FB3CCA /* readme.txt */,
 				9D6D70E85B1CE6376ACAE414 /* sj_Slates From Spreadsheet_Template_005.aep */,
 				C77981A678E829BFB61BD3EB /* sj_Slates From Spreadsheet_Template_006.aep */,
@@ -319,6 +323,7 @@
 				F69AC7425F135C08F12966C2 /* Assets.xcassets in Resources */,
 				80A6C53E93D5A1FBCB2FF6F4 /* Slates From Spreadsheet_Template_001.xlsx in Resources */,
 				0E356B2A2B86135EB9E2483D /* SuperJoy_Slating_App.py in Resources */,
+				24C426B094CFB7FEC5E3029A /* make_contact_sheet.py in Resources */,
 				07ADF2F01D3BB265A2758D32 /* presets in Resources */,
 				CD65C60F8F475F30ABE9B476 /* readme.txt in Resources */,
 				431ABB8FF44E59712494D650 /* sj_Slates From Spreadsheet_Template_005.aep in Resources */,
@@ -334,6 +339,7 @@
 				944AF90F06201391114674A9 /* Assets.xcassets in Resources */,
 				4410ED03698D13D306E2C4F0 /* Slates From Spreadsheet_Template_001.xlsx in Resources */,
 				4EAB0B97D99E3E6F74444CB2 /* SuperJoy_Slating_App.py in Resources */,
+				EDD97EFF4E9396554DADB1A9 /* make_contact_sheet.py in Resources */,
 				B3FDFF2D218CB9AB851910DF /* presets in Resources */,
 				A4A1CF0B9BAC6FDA4B695D13 /* readme.txt in Resources */,
 				4C0934D00401ABE18B4418AE /* sj_Slates From Spreadsheet_Template_005.aep in Resources */,
