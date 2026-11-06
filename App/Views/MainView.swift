@@ -30,8 +30,10 @@ struct MainView: View {
         .foregroundStyle(.white)
         .tint(t.accent)
         .animation(.easeOut(duration: 0.18), value: state.showConsole)
-        .alert(item: $state.alert) { a in
-            Alert(title: Text(a.title), message: Text(a.message), dismissButton: .default(Text("OK")))
+        .alert(state.alert?.title ?? "", isPresented: Binding(get: { state.alert != nil }, set: { if !$0 { state.alert = nil } }), presenting: state.alert) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { a in
+            Text(a.message)
         }
         .sheet(isPresented: $state.showPreviews) { PreviewGallery() }
     }
@@ -63,7 +65,7 @@ struct HeaderView: View {
                     .help("Workflows write the generated JSX to disk instead of running After Effects")
             }
         }
-        .padding(.horizontal, 20).padding(.top, 30).padding(.bottom, 12)
+        .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 12)
     }
 }
 

@@ -21,7 +21,6 @@ struct SlateApp: App {
                 .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
                 .preferredColorScheme(.dark)
         }
-        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1220, height: 900)
         .commands {
             CommandGroup(after: .newItem) {

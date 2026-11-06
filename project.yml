@@ -59,7 +59,11 @@ targetTemplates:
       # Copies vendor/python (staged from uv's python-build-standalone) into
       # Contents/Resources/python and signs it; Xcode then signs the app.
       - name: Embed Python Runtime
-        script: exec "$SRCROOT/scripts/embed_python_runtime.sh"
+        script: exec "$SRCROOT/scripts/embed_python_runtime.sh" slate
+        basedOnDependencyAnalysis: false
+      # LGPL ffmpeg/ffprobe (scripts/build_ffmpeg.sh) -> Contents/Helpers; used for the H.264 slate pass
+      - name: Embed ffmpeg
+        script: exec "$SRCROOT/scripts/embed_ffmpeg.sh"
         basedOnDependencyAnalysis: false
 
   # Companion app: media ingest (read-only scanner + camera reports for now).
@@ -82,7 +86,7 @@ targetTemplates:
         buildPhase: resources
     postBuildScripts:
       - name: Embed Python Runtime
-        script: exec "$SRCROOT/scripts/embed_python_runtime.sh"
+        script: exec "$SRCROOT/scripts/embed_python_runtime.sh" ingest
         basedOnDependencyAnalysis: false
       # LGPL ffmpeg/ffprobe from scripts/build_ffmpeg.sh -> Contents/Helpers (skipped if not built)
       - name: Embed ffmpeg

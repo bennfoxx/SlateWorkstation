@@ -28,7 +28,7 @@ struct PathField: View {
                 if !path.isEmpty {
                     Button { path = ""; onChange?() } label: { Image(systemName: "xmark.circle.fill") }
                         .buttonStyle(.plain).foregroundStyle(t.textMuted)
-                        .help("Clear")
+                        .help("Clear").accessibilityLabel("Clear")
                 }
                 Button("Choose…") {
                     if let url = state.pick(files: files, types: types) { path = url.path; onChange?() }

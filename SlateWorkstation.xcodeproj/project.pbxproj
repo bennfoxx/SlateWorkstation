@@ -233,6 +233,7 @@
 				4249D2AE33E17FD8AFB4216F /* Sources */,
 				ABBEC6E0C9F378273B857C65 /* Resources */,
 				301357F9B4248B76098848EE /* Embed Python Runtime */,
+				1E3CB8DB42E36360636155C6 /* Embed ffmpeg */,
 			);
 			buildRules = (
 			);
@@ -252,6 +253,7 @@
 				F029875790A90971F77B556D /* Sources */,
 				4DD0D1D13965EA8AED108A90 /* Resources */,
 				FB66DC64C9063D27461F1DC8 /* Embed Python Runtime */,
+				69D01FECC7C05413EAA064D5 /* Embed ffmpeg */,
 			);
 			buildRules = (
 			);
@@ -351,6 +353,25 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		1E3CB8DB42E36360636155C6 /* Embed ffmpeg */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed ffmpeg";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "exec \"$SRCROOT/scripts/embed_ffmpeg.sh\"";
+		};
 		301357F9B4248B76098848EE /* Embed Python Runtime */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -368,7 +389,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "exec \"$SRCROOT/scripts/embed_python_runtime.sh\"";
+			shellScript = "exec \"$SRCROOT/scripts/embed_python_runtime.sh\" slate";
 		};
 		475E86FB8A0D06D9FAC5954A /* Embed Python Runtime */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -387,7 +408,26 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "exec \"$SRCROOT/scripts/embed_python_runtime.sh\"";
+			shellScript = "exec \"$SRCROOT/scripts/embed_python_runtime.sh\" ingest";
+		};
+		69D01FECC7C05413EAA064D5 /* Embed ffmpeg */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed ffmpeg";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "exec \"$SRCROOT/scripts/embed_ffmpeg.sh\"";
 		};
 		8B8F384E6B6A650640C845BC /* Embed ffmpeg */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -425,7 +465,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "exec \"$SRCROOT/scripts/embed_python_runtime.sh\"";
+			shellScript = "exec \"$SRCROOT/scripts/embed_python_runtime.sh\" slate";
 		};
 /* End PBXShellScriptBuildPhase section */
 

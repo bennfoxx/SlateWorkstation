@@ -52,6 +52,7 @@ struct IngestView: View {
                                     .foregroundStyle(t.accent)
                                 Text((s as NSString).abbreviatingWithTildeInPath).lineLimit(1)
                                 Button { state.removeSource(s) } label: { Image(systemName: "xmark.circle.fill") }
+                            .accessibilityLabel("Remove source")
                                     .buttonStyle(.plain).foregroundStyle(t.textMuted)
                                     .disabled(state.busy)
                             }
@@ -322,6 +323,7 @@ struct IngestFolderField: View {
                     .help(path)
                 if !path.isEmpty {
                     Button { path = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .accessibilityLabel("Clear")
                         .buttonStyle(.plain).foregroundStyle(t.textMuted)
                 }
                 Button("Choose…") { if let p = state.chooseFolder(message, start: path) { path = p } }

@@ -507,6 +507,28 @@ def create_delivery_folders(base_out_dir, include_slated=True, include_unslated=
     return paths
 
 
+def _find_ffmpeg():
+    """Bundled ffmpeg (Contents/Helpers) first, then common install locations, else PATH name."""
+    helpers = os.path.normpath(os.path.join(_APP_DIR, "..", "Helpers", "ffmpeg"))
+    for p in (helpers, "/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"):
+        if os.access(p, os.X_OK):
+            return p
+    return "ffmpeg"
+
+
+def _h264_slate_args(ffmpeg):
+    """Visually lossless H.264 args: libx264 CRF 10 when this ffmpeg has it (GPL builds),
+    else the VideoToolbox hardware encoder (the bundled LGPL build) at a high quality setting."""
+    try:
+        enc = subprocess.run([ffmpeg, "-hide_banner", "-encoders"], capture_output=True,
+                             text=True, timeout=15).stdout
+    except (OSError, subprocess.SubprocessError):
+        enc = ""
+    if "libx264" in enc:
+        return ["-c:v", "libx264", "-crf", "10", "-preset", "slow", "-pix_fmt", "yuv420p"]
+    return ["-c:v", "h264_videotoolbox", "-q:v", "90", "-profile:v", "high", "-pix_fmt", "yuv420p"]
+
+
 def ensure_ame_running(wait_seconds=75):
     """Launch Adobe Media Encoder (if needed) and give Dynamic Link time to come up,
     so After Effects' queueInAME doesn't fail with 'Failed to connect to Adobe Media Encoder'."""
@@ -5732,17 +5754,14 @@ class SuperJoyWorkstation:
                     mov_file = j.get("slated_prores_output") or j.get("final_output")
                     if mov_file and os.path.isfile(mov_file):
                         tmp_h264 = mov_file + ".h264_tmp.mov"
-                        cmd = [
-                            "ffmpeg", "-y", "-v", "error",
-                            "-i", mov_file,
-                            "-c:v", "libx264",
-                            "-crf", "10",
-                            "-preset", "slow",
-                            "-pix_fmt", "yuv420p",
-                            "-c:a", "copy",
-                            tmp_h264,
-                        ]
-                        r = subprocess.run(cmd)
+                        ff = _find_ffmpeg()
+                        cmd = [ff, "-y", "-v", "error", "-i", mov_file,
+                               *_h264_slate_args(ff), "-c:a", "copy", tmp_h264]
+                        try:
+                            r = subprocess.run(cmd)
+                        except OSError as e:
+                            print(f"[slate] ffmpeg not available for the H.264 slate pass: {e}")
+                            break
                         if r.returncode == 0 and os.path.isfile(tmp_h264) and os.path.getsize(tmp_h264) > 0:
                             os.replace(tmp_h264, mov_file)
                         elif os.path.isfile(tmp_h264):

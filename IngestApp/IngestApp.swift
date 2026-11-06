@@ -14,7 +14,6 @@ struct IngestApp: App {
                 .frame(minWidth: 1040, minHeight: 760)
                 .preferredColorScheme(.dark)
         }
-        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1280, height: 880)
         .commands {
             CommandGroup(after: .newItem) {
@@ -64,7 +63,7 @@ struct IngestRootView: View {
                 }
                 Spacer()
             }
-            .padding(.horizontal, 20).padding(.top, 30).padding(.bottom, 12)
+            .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 12)
 
             IngestView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -80,8 +79,10 @@ struct IngestRootView: View {
         .foregroundStyle(.white)
         .tint(t.accent)
         .animation(.easeOut(duration: 0.18), value: state.showConsole)
-        .alert(item: $state.alert) { a in
-            Alert(title: Text(a.title), message: Text(a.message), dismissButton: .default(Text("OK")))
+        .alert(state.alert?.title ?? "", isPresented: Binding(get: { state.alert != nil }, set: { if !$0 { state.alert = nil } }), presenting: state.alert) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { a in
+            Text(a.message)
         }
     }
 }
