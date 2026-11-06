@@ -7,67 +7,91 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		01CB08B68D61A99751B2D806 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7FD5925C54CBB4858479341 /* Theme.swift */; };
 		07ADF2F01D3BB265A2758D32 /* presets in Resources */ = {isa = PBXBuildFile; fileRef = 95E6050992D1A71773C6DF44 /* presets */; };
 		0B699E7BF2AE027B0CE63745 /* sj_Slates From Spreadsheet_Template_006.aep in Resources */ = {isa = PBXBuildFile; fileRef = C77981A678E829BFB61BD3EB /* sj_Slates From Spreadsheet_Template_006.aep */; };
+		0C4AE8CCE99D037C15A35E20 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07BC3C22F77E48A38CF1221D /* Theme.swift */; };
 		0E356B2A2B86135EB9E2483D /* SuperJoy_Slating_App.py in Resources */ = {isa = PBXBuildFile; fileRef = 029341957FD2A7F384C4384A /* SuperJoy_Slating_App.py */; };
+		101A622D4BCAA71BB21B7015 /* IngestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F5869BEEC47C4DF58EAB84D /* IngestView.swift */; };
+		15E4642C4435AA5F41E6D12C /* IngestState.swift in Sources */ = {isa = PBXBuildFile; fileRef = C35F15FCA85C69A958E4E7C6 /* IngestState.swift */; };
 		15F78189BAF6464CEDE1A666 /* ConsoleAndSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E910C40148E42B86547B5558 /* ConsoleAndSettings.swift */; };
+		191735E6F2228312638ABBB2 /* PythonWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08E2A1AEF6AC420263BBE745 /* PythonWorker.swift */; };
+		24FAA2224B2FE83689E0E12D /* PythonWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08E2A1AEF6AC420263BBE745 /* PythonWorker.swift */; };
 		2BE1DAF507831F28A27E6E21 /* WorkstationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F43FABFF1BF65A2372AC47E7 /* WorkstationState.swift */; };
-		3C1E7815E5F53F544DABFE39 /* PythonWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7348397E4BFC8498869BE33 /* PythonWorker.swift */; };
+		2D260D9875F1F983313122C3 /* LogModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A65B2504188E35A66C791146 /* LogModels.swift */; };
+		2F3D2393004705BDA2FCE858 /* LogModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A65B2504188E35A66C791146 /* LogModels.swift */; };
+		307ED9B5E5176748282D60B5 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07BC3C22F77E48A38CF1221D /* Theme.swift */; };
+		3934E7FCC99B13075987B005 /* IngestModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5665226237C9A239FC8EC69 /* IngestModels.swift */; };
 		431ABB8FF44E59712494D650 /* sj_Slates From Spreadsheet_Template_005.aep in Resources */ = {isa = PBXBuildFile; fileRef = 9D6D70E85B1CE6376ACAE414 /* sj_Slates From Spreadsheet_Template_005.aep */; };
 		4410ED03698D13D306E2C4F0 /* Slates From Spreadsheet_Template_001.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = F8EAF80202FEAFA07FA2C907 /* Slates From Spreadsheet_Template_001.xlsx */; };
+		4955966A9882944681EDB391 /* ingest_worker.py in Resources */ = {isa = PBXBuildFile; fileRef = 0714A98747B3D6667DAB13F5 /* ingest_worker.py */; };
 		4C0934D00401ABE18B4418AE /* sj_Slates From Spreadsheet_Template_005.aep in Resources */ = {isa = PBXBuildFile; fileRef = 9D6D70E85B1CE6376ACAE414 /* sj_Slates From Spreadsheet_Template_005.aep */; };
 		4EAB0B97D99E3E6F74444CB2 /* SuperJoy_Slating_App.py in Resources */ = {isa = PBXBuildFile; fileRef = 029341957FD2A7F384C4384A /* SuperJoy_Slating_App.py */; };
 		4EC46CA455B28F6D1A9FD4B6 /* WorkstationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F43FABFF1BF65A2372AC47E7 /* WorkstationState.swift */; };
 		4FDC77D618E7E22219F730F6 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A34CD7DACB51EE2C2F0643 /* Models.swift */; };
 		52BB338F7A3191C782BBA29D /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40934FD83495C61A3FEE9203 /* MainView.swift */; };
 		541C10264DEFA3397C63DD5D /* ConsoleAndSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = E910C40148E42B86547B5558 /* ConsoleAndSettings.swift */; };
+		5538AF30945D4FB994601057 /* ingest in Resources */ = {isa = PBXBuildFile; fileRef = 324B660F3BC42113E7D32D67 /* ingest */; };
 		5F542FB643C272C79F07B4DA /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9B391B42A655B703B50BBA3 /* Components.swift */; };
+		6B0F773EE909073D1415CFE5 /* IngestApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40A17FE8B5DE45DCE7BE880C /* IngestApp.swift */; };
 		6DC968EB548CCDBFE53378F3 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9B391B42A655B703B50BBA3 /* Components.swift */; };
 		72CAEB41212517F213104D00 /* BatchBuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB9173FF1C82271028A4F678 /* BatchBuilderView.swift */; };
 		7320F1B081AC9D5BE4116908 /* SlatePreviewCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9548D5DFA8DFCF45B3B93AA /* SlatePreviewCard.swift */; };
+		79D7A191E122EF41DA8AFF52 /* LogModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A65B2504188E35A66C791146 /* LogModels.swift */; };
 		80048AB036B69CCDF208F307 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40934FD83495C61A3FEE9203 /* MainView.swift */; };
 		80A6C53E93D5A1FBCB2FF6F4 /* Slates From Spreadsheet_Template_001.xlsx in Resources */ = {isa = PBXBuildFile; fileRef = F8EAF80202FEAFA07FA2C907 /* Slates From Spreadsheet_Template_001.xlsx */; };
 		83454B3C6CF6EEBAF05C1AC4 /* SlateApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED381BF502339D5E129054E9 /* SlateApp.swift */; };
-		8B0E8F901BDAF0C9C2C12B7F /* PythonWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7348397E4BFC8498869BE33 /* PythonWorker.swift */; };
+		8C5741FF7F1729397F58A81B /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07BC3C22F77E48A38CF1221D /* Theme.swift */; };
 		944AF90F06201391114674A9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5D63FA7FF27408C806337EA6 /* Assets.xcassets */; };
 		94A7E1807CB39237B9CE68E7 /* SlatePreviewCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9548D5DFA8DFCF45B3B93AA /* SlatePreviewCard.swift */; };
+		95B3C289F45A3333592CA5A8 /* SharedViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D313415FBAE6BA749AAD4D77 /* SharedViews.swift */; };
 		991A3FF77A75F1E4F991B784 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A34CD7DACB51EE2C2F0643 /* Models.swift */; };
+		9C4744884C80CE7C031F0419 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5D63FA7FF27408C806337EA6 /* Assets.xcassets */; };
+		A12A3273B1AD2735ACBFDA96 /* SharedViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D313415FBAE6BA749AAD4D77 /* SharedViews.swift */; };
 		A4A1CF0B9BAC6FDA4B695D13 /* readme.txt in Resources */ = {isa = PBXBuildFile; fileRef = 1A875CF3950ED66F53FB3CCA /* readme.txt */; };
 		AD0149F7CCBA0F8A14835BE5 /* slate_worker.py in Resources */ = {isa = PBXBuildFile; fileRef = D5F7B227904C842EC402E01C /* slate_worker.py */; };
+		B35531A53EB50A3251B2F556 /* SharedViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D313415FBAE6BA749AAD4D77 /* SharedViews.swift */; };
 		B3FDFF2D218CB9AB851910DF /* presets in Resources */ = {isa = PBXBuildFile; fileRef = 95E6050992D1A71773C6DF44 /* presets */; };
 		BC734E865D54A277A7651DFE /* BatchBuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB9173FF1C82271028A4F678 /* BatchBuilderView.swift */; };
 		BF5D5CE532D47EF2FE4173E2 /* sj_Slates From Spreadsheet_Template_006.aep in Resources */ = {isa = PBXBuildFile; fileRef = C77981A678E829BFB61BD3EB /* sj_Slates From Spreadsheet_Template_006.aep */; };
 		C0F4EC1098F225FA360B5CC4 /* SlateApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED381BF502339D5E129054E9 /* SlateApp.swift */; };
+		C7B1BBC716644BF3288DCF07 /* PythonWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08E2A1AEF6AC420263BBE745 /* PythonWorker.swift */; };
 		CD65C60F8F475F30ABE9B476 /* readme.txt in Resources */ = {isa = PBXBuildFile; fileRef = 1A875CF3950ED66F53FB3CCA /* readme.txt */; };
 		CD8B7C5527807EAC2B25B8C6 /* MarryAndUnslateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 533F3BBB0DAE4AF3F7D56B68 /* MarryAndUnslateViews.swift */; };
 		E088DA6919F7817E77C44B11 /* slate_worker.py in Resources */ = {isa = PBXBuildFile; fileRef = D5F7B227904C842EC402E01C /* slate_worker.py */; };
 		E57EA7DF20BB6391F6126F45 /* MarryAndUnslateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 533F3BBB0DAE4AF3F7D56B68 /* MarryAndUnslateViews.swift */; };
-		E5FA4E8D117AF233EF719BCC /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7FD5925C54CBB4858479341 /* Theme.swift */; };
 		F69AC7425F135C08F12966C2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5D63FA7FF27408C806337EA6 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		029341957FD2A7F384C4384A /* SuperJoy_Slating_App.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = SuperJoy_Slating_App.py; sourceTree = "<group>"; };
+		0714A98747B3D6667DAB13F5 /* ingest_worker.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = ingest_worker.py; sourceTree = "<group>"; };
+		07BC3C22F77E48A38CF1221D /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		08E2A1AEF6AC420263BBE745 /* PythonWorker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PythonWorker.swift; sourceTree = "<group>"; };
 		1A875CF3950ED66F53FB3CCA /* readme.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = readme.txt; sourceTree = "<group>"; };
+		1F5869BEEC47C4DF58EAB84D /* IngestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IngestView.swift; sourceTree = "<group>"; };
+		324B660F3BC42113E7D32D67 /* ingest */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ingest; path = engine/ingest; sourceTree = SOURCE_ROOT; };
+		3A7F60B0DC53094930F1F03C /* MSTR-SL8R Ingest.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "MSTR-SL8R Ingest.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		40934FD83495C61A3FEE9203 /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
+		40A17FE8B5DE45DCE7BE880C /* IngestApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IngestApp.swift; sourceTree = "<group>"; };
 		533F3BBB0DAE4AF3F7D56B68 /* MarryAndUnslateViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarryAndUnslateViews.swift; sourceTree = "<group>"; };
 		5D63FA7FF27408C806337EA6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		95E6050992D1A71773C6DF44 /* presets */ = {isa = PBXFileReference; lastKnownFileType = folder; name = presets; path = engine/presets; sourceTree = SOURCE_ROOT; };
 		96A34CD7DACB51EE2C2F0643 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		9D6D70E85B1CE6376ACAE414 /* sj_Slates From Spreadsheet_Template_005.aep */ = {isa = PBXFileReference; path = "sj_Slates From Spreadsheet_Template_005.aep"; sourceTree = "<group>"; };
 		A28A727F35E90995FD891226 /* SuperJoy Slating Workstation.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "SuperJoy Slating Workstation.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A5665226237C9A239FC8EC69 /* IngestModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IngestModels.swift; sourceTree = "<group>"; };
+		A65B2504188E35A66C791146 /* LogModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogModels.swift; sourceTree = "<group>"; };
+		C35F15FCA85C69A958E4E7C6 /* IngestState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IngestState.swift; sourceTree = "<group>"; };
 		C77981A678E829BFB61BD3EB /* sj_Slates From Spreadsheet_Template_006.aep */ = {isa = PBXFileReference; path = "sj_Slates From Spreadsheet_Template_006.aep"; sourceTree = "<group>"; };
 		C9B391B42A655B703B50BBA3 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
+		D313415FBAE6BA749AAD4D77 /* SharedViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedViews.swift; sourceTree = "<group>"; };
 		D5F7B227904C842EC402E01C /* slate_worker.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = slate_worker.py; sourceTree = "<group>"; };
-		D7FD5925C54CBB4858479341 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		DB9173FF1C82271028A4F678 /* BatchBuilderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchBuilderView.swift; sourceTree = "<group>"; };
 		E910C40148E42B86547B5558 /* ConsoleAndSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleAndSettings.swift; sourceTree = "<group>"; };
 		E9548D5DFA8DFCF45B3B93AA /* SlatePreviewCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlatePreviewCard.swift; sourceTree = "<group>"; };
 		ED381BF502339D5E129054E9 /* SlateApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlateApp.swift; sourceTree = "<group>"; };
 		EE123F1AEB0A678477F39CB5 /* MSTR-SL8R.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "MSTR-SL8R.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F43FABFF1BF65A2372AC47E7 /* WorkstationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkstationState.swift; sourceTree = "<group>"; };
-		F7348397E4BFC8498869BE33 /* PythonWorker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PythonWorker.swift; sourceTree = "<group>"; };
 		F8EAF80202FEAFA07FA2C907 /* Slates From Spreadsheet_Template_001.xlsx */ = {isa = PBXFileReference; path = "Slates From Spreadsheet_Template_001.xlsx"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -83,6 +107,7 @@
 		6DDEC69903D0F2741D0D0159 /* engine */ = {
 			isa = PBXGroup;
 			children = (
+				0714A98747B3D6667DAB13F5 /* ingest_worker.py */,
 				1A875CF3950ED66F53FB3CCA /* readme.txt */,
 				9D6D70E85B1CE6376ACAE414 /* sj_Slates From Spreadsheet_Template_005.aep */,
 				C77981A678E829BFB61BD3EB /* sj_Slates From Spreadsheet_Template_006.aep */,
@@ -96,29 +121,21 @@
 		7D827203B22209763A068941 = {
 			isa = PBXGroup;
 			children = (
+				324B660F3BC42113E7D32D67 /* ingest */,
 				95E6050992D1A71773C6DF44 /* presets */,
 				9BBCF82E1F6A74EEE40B93D3 /* App */,
 				6DDEC69903D0F2741D0D0159 /* engine */,
+				AD05396EA9625291726A1862 /* IngestApp */,
 				AA24C1E9B1B7E5683028C4FF /* Shared */,
 				9BFDEDC3BAB6B31106A904B4 /* Products */,
 			);
-			sourceTree = "<group>";
-		};
-		93BF41DE7A7639CAB6FD5865 /* Services */ = {
-			isa = PBXGroup;
-			children = (
-				F7348397E4BFC8498869BE33 /* PythonWorker.swift */,
-			);
-			path = Services;
 			sourceTree = "<group>";
 		};
 		9BBCF82E1F6A74EEE40B93D3 /* App */ = {
 			isa = PBXGroup;
 			children = (
 				ED381BF502339D5E129054E9 /* SlateApp.swift */,
-				D7FD5925C54CBB4858479341 /* Theme.swift */,
 				FB27B4ACB4A5F24337B22BBE /* Models */,
-				93BF41DE7A7639CAB6FD5865 /* Services */,
 				662AE1F4E90BFD57BC7A4078 /* State */,
 				C2647246799EB66286DAB7CF /* Views */,
 			);
@@ -128,6 +145,7 @@
 		9BFDEDC3BAB6B31106A904B4 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				3A7F60B0DC53094930F1F03C /* MSTR-SL8R Ingest.app */,
 				EE123F1AEB0A678477F39CB5 /* MSTR-SL8R.app */,
 				A28A727F35E90995FD891226 /* SuperJoy Slating Workstation.app */,
 			);
@@ -138,8 +156,23 @@
 			isa = PBXGroup;
 			children = (
 				5D63FA7FF27408C806337EA6 /* Assets.xcassets */,
+				A65B2504188E35A66C791146 /* LogModels.swift */,
+				08E2A1AEF6AC420263BBE745 /* PythonWorker.swift */,
+				D313415FBAE6BA749AAD4D77 /* SharedViews.swift */,
+				07BC3C22F77E48A38CF1221D /* Theme.swift */,
 			);
 			path = Shared;
+			sourceTree = "<group>";
+		};
+		AD05396EA9625291726A1862 /* IngestApp */ = {
+			isa = PBXGroup;
+			children = (
+				40A17FE8B5DE45DCE7BE880C /* IngestApp.swift */,
+				A5665226237C9A239FC8EC69 /* IngestModels.swift */,
+				C35F15FCA85C69A958E4E7C6 /* IngestState.swift */,
+				1F5869BEEC47C4DF58EAB84D /* IngestView.swift */,
+			);
+			path = IngestApp;
 			sourceTree = "<group>";
 		};
 		C2647246799EB66286DAB7CF /* Views */ = {
@@ -166,6 +199,25 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		22ED71C7B3B7B725A6194633 /* MSTR-SL8R Ingest */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 049C95C1FC784B4E0DA8A091 /* Build configuration list for PBXNativeTarget "MSTR-SL8R Ingest" */;
+			buildPhases = (
+				3BA4347523F503505B2F1200 /* Sources */,
+				0E29D6F643ADDE16293207F5 /* Resources */,
+				475E86FB8A0D06D9FAC5954A /* Embed Python Runtime */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "MSTR-SL8R Ingest";
+			packageProductDependencies = (
+			);
+			productName = "MSTR-SL8R Ingest";
+			productReference = 3A7F60B0DC53094930F1F03C /* MSTR-SL8R Ingest.app */;
+			productType = "com.apple.product-type.application";
+		};
 		39828FD7ADA6176CE72F0524 /* SuperJoy Slating Workstation */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 6A1BC2507277F97681E662B1 /* Build configuration list for PBXNativeTarget "SuperJoy Slating Workstation" */;
@@ -213,6 +265,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					22ED71C7B3B7B725A6194633 = {
+						DevelopmentTeam = 43LRM27435;
+					};
 					39828FD7ADA6176CE72F0524 = {
 						DevelopmentTeam = 43LRM27435;
 					};
@@ -237,11 +292,22 @@
 			targets = (
 				39828FD7ADA6176CE72F0524 /* SuperJoy Slating Workstation */,
 				897E57423ADD516CC04D0738 /* MSTR-SL8R */,
+				22ED71C7B3B7B725A6194633 /* MSTR-SL8R Ingest */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		0E29D6F643ADDE16293207F5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9C4744884C80CE7C031F0419 /* Assets.xcassets in Resources */,
+				5538AF30945D4FB994601057 /* ingest in Resources */,
+				4955966A9882944681EDB391 /* ingest_worker.py in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		4DD0D1D13965EA8AED108A90 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -294,6 +360,25 @@
 			shellPath = /bin/sh;
 			shellScript = "exec \"$SRCROOT/scripts/embed_python_runtime.sh\"";
 		};
+		475E86FB8A0D06D9FAC5954A /* Embed Python Runtime */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed Python Runtime";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "exec \"$SRCROOT/scripts/embed_python_runtime.sh\"";
+		};
 		FB66DC64C9063D27461F1DC8 /* Embed Python Runtime */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -316,6 +401,21 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		3BA4347523F503505B2F1200 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6B0F773EE909073D1415CFE5 /* IngestApp.swift in Sources */,
+				3934E7FCC99B13075987B005 /* IngestModels.swift in Sources */,
+				15E4642C4435AA5F41E6D12C /* IngestState.swift in Sources */,
+				101A622D4BCAA71BB21B7015 /* IngestView.swift in Sources */,
+				2D260D9875F1F983313122C3 /* LogModels.swift in Sources */,
+				191735E6F2228312638ABBB2 /* PythonWorker.swift in Sources */,
+				95B3C289F45A3333592CA5A8 /* SharedViews.swift in Sources */,
+				0C4AE8CCE99D037C15A35E20 /* Theme.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		4249D2AE33E17FD8AFB4216F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -323,13 +423,15 @@
 				BC734E865D54A277A7651DFE /* BatchBuilderView.swift in Sources */,
 				5F542FB643C272C79F07B4DA /* Components.swift in Sources */,
 				541C10264DEFA3397C63DD5D /* ConsoleAndSettings.swift in Sources */,
+				79D7A191E122EF41DA8AFF52 /* LogModels.swift in Sources */,
 				80048AB036B69CCDF208F307 /* MainView.swift in Sources */,
 				CD8B7C5527807EAC2B25B8C6 /* MarryAndUnslateViews.swift in Sources */,
 				4FDC77D618E7E22219F730F6 /* Models.swift in Sources */,
-				3C1E7815E5F53F544DABFE39 /* PythonWorker.swift in Sources */,
+				24FAA2224B2FE83689E0E12D /* PythonWorker.swift in Sources */,
+				A12A3273B1AD2735ACBFDA96 /* SharedViews.swift in Sources */,
 				C0F4EC1098F225FA360B5CC4 /* SlateApp.swift in Sources */,
 				7320F1B081AC9D5BE4116908 /* SlatePreviewCard.swift in Sources */,
-				01CB08B68D61A99751B2D806 /* Theme.swift in Sources */,
+				8C5741FF7F1729397F58A81B /* Theme.swift in Sources */,
 				2BE1DAF507831F28A27E6E21 /* WorkstationState.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -341,13 +443,15 @@
 				72CAEB41212517F213104D00 /* BatchBuilderView.swift in Sources */,
 				6DC968EB548CCDBFE53378F3 /* Components.swift in Sources */,
 				15F78189BAF6464CEDE1A666 /* ConsoleAndSettings.swift in Sources */,
+				2F3D2393004705BDA2FCE858 /* LogModels.swift in Sources */,
 				52BB338F7A3191C782BBA29D /* MainView.swift in Sources */,
 				E57EA7DF20BB6391F6126F45 /* MarryAndUnslateViews.swift in Sources */,
 				991A3FF77A75F1E4F991B784 /* Models.swift in Sources */,
-				8B0E8F901BDAF0C9C2C12B7F /* PythonWorker.swift in Sources */,
+				C7B1BBC716644BF3288DCF07 /* PythonWorker.swift in Sources */,
+				B35531A53EB50A3251B2F556 /* SharedViews.swift in Sources */,
 				83454B3C6CF6EEBAF05C1AC4 /* SlateApp.swift in Sources */,
 				94A7E1807CB39237B9CE68E7 /* SlatePreviewCard.swift in Sources */,
-				E5FA4E8D117AF233EF719BCC /* Theme.swift in Sources */,
+				307ED9B5E5176748282D60B5 /* Theme.swift in Sources */,
 				4EC46CA455B28F6D1A9FD4B6 /* WorkstationState.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -461,6 +565,24 @@
 			};
 			name = Release;
 		};
+		8F81F27D6125DECBF3705A4B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-MSTR";
+				CODE_SIGN_ENTITLEMENTS = IngestApp/App.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = IngestApp/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.benfoxmedia.mstrsl8r.ingest;
+				PRODUCT_NAME = "MSTR-SL8R Ingest";
+				SDKROOT = macosx;
+				SW_DEFAULT_THEME = mstr_sl8r;
+			};
+			name = Release;
+		};
 		A5422B237868731047AC02C6 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -475,6 +597,24 @@
 				PRODUCT_NAME = "SuperJoy Slating Workstation";
 				SDKROOT = macosx;
 				SW_DEFAULT_THEME = superjoy;
+			};
+			name = Debug;
+		};
+		C740A434CD1831125F2D35E1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-MSTR";
+				CODE_SIGN_ENTITLEMENTS = IngestApp/App.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = IngestApp/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.benfoxmedia.mstrsl8r.ingest;
+				PRODUCT_NAME = "MSTR-SL8R Ingest";
+				SDKROOT = macosx;
+				SW_DEFAULT_THEME = mstr_sl8r;
 			};
 			name = Debug;
 		};
@@ -566,6 +706,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		049C95C1FC784B4E0DA8A091 /* Build configuration list for PBXNativeTarget "MSTR-SL8R Ingest" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C740A434CD1831125F2D35E1 /* Debug */,
+				8F81F27D6125DECBF3705A4B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		3915ABB3B9A23E0833B7D8BB /* Build configuration list for PBXProject "SlateWorkstation" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

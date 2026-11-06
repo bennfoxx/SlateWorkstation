@@ -8,6 +8,7 @@ struct SlateApp: App {
         WindowGroup(state.theme.appTitle) {
             MainView()
                 .environment(state)
+                .environment(\.brandTheme, state.theme)
                 .frame(minWidth: 1040, minHeight: 800)
                 .onOpenURL { url in
                     // Slate sheets opened from Finder / dropped on the Dock icon

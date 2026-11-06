@@ -55,18 +55,6 @@ struct PathField: View {
     }
 }
 
-struct SectionTitle: View {
-    @Environment(WorkstationState.self) private var state
-    let text: String
-    var symbol: String? = nil
-    var body: some View {
-        HStack(spacing: 6) {
-            if let symbol { Image(systemName: symbol).foregroundStyle(state.theme.accent) }
-            Text(text.uppercased()).font(state.theme.font(12, weight: .bold)).kerning(1)
-        }
-    }
-}
-
 struct LabeledField: View {
     @Environment(WorkstationState.self) private var state
     let label: String

@@ -60,6 +60,29 @@ targetTemplates:
         script: exec "$SRCROOT/scripts/embed_python_runtime.sh"
         basedOnDependencyAnalysis: false
 
+  # Companion app: media ingest (read-only scanner + camera reports for now).
+  # Shares Shared/ (theme, Python worker, console) with the slate apps; its own UI in IngestApp/.
+  IngestApp:
+    type: application
+    platform: macOS
+    settings:
+      base:
+        INFOPLIST_FILE: IngestApp/Info.plist
+        CODE_SIGN_ENTITLEMENTS: IngestApp/App.entitlements
+    sources:
+      - path: IngestApp
+        excludes: ["Info.plist", "App.entitlements"]
+      - Shared
+      - path: engine/ingest_worker.py
+        buildPhase: resources
+      - path: engine/ingest
+        type: folder
+        buildPhase: resources
+    postBuildScripts:
+      - name: Embed Python Runtime
+        script: exec "$SRCROOT/scripts/embed_python_runtime.sh"
+        basedOnDependencyAnalysis: false
+
 targets:
   SuperJoy Slating Workstation:
     templates: [SlateApp]
@@ -76,5 +99,14 @@ targets:
       base:
         PRODUCT_NAME: "MSTR-SL8R"
         PRODUCT_BUNDLE_IDENTIFIER: com.benfoxmedia.mstrsl8r.native
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-MSTR
+        SW_DEFAULT_THEME: mstr_sl8r
+
+  MSTR-SL8R Ingest:
+    templates: [IngestApp]
+    settings:
+      base:
+        PRODUCT_NAME: "MSTR-SL8R Ingest"
+        PRODUCT_BUNDLE_IDENTIFIER: com.benfoxmedia.mstrsl8r.ingest
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-MSTR
         SW_DEFAULT_THEME: mstr_sl8r

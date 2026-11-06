@@ -7,6 +7,7 @@ enum WorkerEvent {
     case alert(level: String, title: String, message: String)
     case previews([[String: Any]])
     case stderr(String)
+    case progress(stage: String, done: Int, total: Int?)
     case result([String: Any])
 }
 
@@ -50,14 +51,14 @@ final class PythonWorker: @unchecked Sendable {
 
     /// Folder holding slate_worker.py + SuperJoy_Slating_App.py + presets/templates.
     /// Defaults to the app bundle's Resources; a developer can point it at the repo.
-    static func resolveEngineDirectory() -> URL? {
+    static func resolveEngineDirectory(script: String = "slate_worker.py") -> URL? {
         let fm = FileManager.default
         if let custom = UserDefaults.standard.string(forKey: engineOverrideKey), !custom.isEmpty,
-           fm.fileExists(atPath: (custom as NSString).appendingPathComponent("slate_worker.py")) {
+           fm.fileExists(atPath: (custom as NSString).appendingPathComponent(script)) {
             return URL(fileURLWithPath: custom)
         }
         guard let res = Bundle.main.resourceURL,
-              fm.fileExists(atPath: res.appendingPathComponent("slate_worker.py").path) else { return nil }
+              fm.fileExists(atPath: res.appendingPathComponent(script).path) else { return nil }
         return res
     }
 
@@ -70,19 +71,19 @@ final class PythonWorker: @unchecked Sendable {
 
     /// Runs one worker command. `onEvent` is called on the main actor for every event.
     /// Returns the final "result" payload (or throws if the worker could not run).
-    func run(arguments: [String], stdin: Data? = nil,
+    func run(arguments: [String], stdin: Data? = nil, script: String = "slate_worker.py",
              onEvent: @escaping @MainActor (WorkerEvent) -> Void) async throws -> [String: Any] {
         guard let python = Self.resolvePython() else {
             throw WorkerError(message: "No Python runtime found: the embedded one is missing from the app and no python3 is installed. Rebuild the app, or set a python3 path in Settings.")
         }
-        guard let engine = Self.resolveEngineDirectory() else {
-            throw WorkerError(message: "slate_worker.py is missing from the app bundle.")
+        guard let engine = Self.resolveEngineDirectory(script: script) else {
+            throw WorkerError(message: "\(script) is missing from the app bundle.")
         }
 
         let p = Process()
         p.executableURL = python
         // -I: isolated (ignore PYTHON* env + user site); -B: never write __pycache__ into the signed bundle.
-        p.arguments = ["-I", "-B", engine.appendingPathComponent("slate_worker.py").path] + arguments
+        p.arguments = ["-I", "-B", engine.appendingPathComponent(script).path] + arguments
         p.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
         var env = ProcessInfo.processInfo.environment
         env["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -96,7 +97,8 @@ final class PythonWorker: @unchecked Sendable {
 
         // Only workflow runs are cancellable; scans (e.g. Marry rescans while a run is going)
         // must not replace or clear the process that Stop terminates.
-        let cancellable = arguments.first == "run"
+        // Ingest scans / reports (ingest_worker.py) are long-running and also stoppable.
+        let cancellable = arguments.first == "run" || script != "slate_worker.py"
         if cancellable { setProcess(p) }
         defer { if cancellable { setProcess(nil) } }
 
@@ -128,6 +130,9 @@ final class PythonWorker: @unchecked Sendable {
                                      title: obj["title"] as? String ?? "",
                                      message: obj["message"] as? String ?? ""))
             case "previews": await onEvent(.previews(obj["items"] as? [[String: Any]] ?? []))
+            case "progress":
+                await onEvent(.progress(stage: obj["stage"] as? String ?? "",
+                                        done: obj["done"] as? Int ?? 0, total: obj["total"] as? Int))
             case "result":
                 result = obj
                 await onEvent(.result(obj))

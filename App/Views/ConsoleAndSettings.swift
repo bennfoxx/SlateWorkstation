@@ -1,57 +1,5 @@
 import SwiftUI
 
-struct ConsoleView: View {
-    @Environment(WorkstationState.self) private var state
-
-    var body: some View {
-        let t = state.theme
-        VStack(spacing: 0) {
-            HStack {
-                Label("Worker Log", systemImage: "terminal").font(t.font(11, weight: .bold))
-                Spacer()
-                Button("Copy") {
-                    let text = state.log.map(\.text).joined(separator: "\n")
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(text, forType: .string)
-                }
-                Button("Clear") { state.log.removeAll() }
-            }
-            .buttonStyle(.borderless)
-            .padding(.horizontal, 14).padding(.vertical, 6)
-            .background(t.card)
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
-                        ForEach(state.log) { line in
-                            Text(line.text)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(color(line.kind))
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .id(line.id)
-                        }
-                    }
-                    .padding(10)
-                }
-                .onChange(of: state.log.count) {
-                    if let last = state.log.last { proxy.scrollTo(last.id, anchor: .bottom) }
-                }
-            }
-            .background(t.recessed)
-        }
-        .overlay(alignment: .top) { Rectangle().fill(t.border).frame(height: 1) }
-    }
-
-    private func color(_ k: LogLine.Kind) -> Color {
-        switch k {
-        case .info: state.theme.success
-        case .warning: state.theme.highlight
-        case .error: Color(hex: 0xFF6B63)
-        case .output: .white.opacity(0.8)
-        }
-    }
-}
-
 struct PreviewGallery: View {
     @Environment(WorkstationState.self) private var state
     @Environment(\.dismiss) private var dismiss

@@ -118,21 +118,6 @@ struct MarryPair: Identifiable, Hashable {
     }
 }
 
-struct LogLine: Identifiable {
-    enum Kind { case info, warning, error, output }
-    let id = UUID()
-    let date = Date()
-    let kind: Kind
-    let text: String
-}
-
-struct AlertMessage: Identifiable {
-    let id = UUID()
-    let level: String
-    let title: String
-    let message: String
-}
-
 struct PreviewItem: Identifiable, Hashable {
     var id: String { imagePath }
     let adID: String

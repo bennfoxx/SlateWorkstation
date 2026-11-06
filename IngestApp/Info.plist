@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIconName</key>
+	<string>$(ASSETCATALOG_COMPILER_APPICON_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.video</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>$(PRODUCT_NAME) will automate Adobe Premiere Pro and Adobe Media Encoder to organise and transcode footage.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>$(PRODUCT_NAME) reads camera media you choose and writes camera reports where you choose. It never changes source media.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>$(PRODUCT_NAME) reads camera media you choose and writes camera reports where you choose. It never changes source media.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>$(PRODUCT_NAME) reads camera media you choose and writes camera reports where you choose. It never changes source media.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 Benjamin Fox. All rights reserved.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>$(PRODUCT_NAME) reads footage on network shares you choose. It never changes source media.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>$(PRODUCT_NAME) reads camera cards and drives you choose. It never changes source media.</string>
+	<key>SWDefaultTheme</key>
+	<string>$(SW_DEFAULT_THEME)</string>
+</dict>
+</plist>

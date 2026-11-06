@@ -272,7 +272,7 @@ final class WorkstationState {
             appendLog(level == "error" ? .error : level == "warning" ? .warning : .info, "\(title): \(message)")
             alert = AlertMessage(level: level, title: title, message: message)
         case .previews(let items): setPreviews(items)
-        case .result: break
+        case .progress, .result: break
         }
     }
 

@@ -21,7 +21,7 @@ struct MainView: View {
             .padding(.horizontal, 20)
             RunBar()
             if state.showConsole {
-                ConsoleView()
+                ConsoleView(theme: t, log: $state.log)
                     .frame(height: 190)
                     .transition(.move(edge: .bottom))
             }
