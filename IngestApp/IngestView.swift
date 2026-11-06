@@ -7,12 +7,19 @@ struct IngestView: View {
 
     var body: some View {
         let t = state.theme
-        VStack(spacing: 12) {
-            sourcesCard
-            VSplitView {
-                rollsCard.frame(minHeight: 180)
-                clipsCard.frame(minHeight: 140).padding(.top, 12)
+        HSplitView {
+            VStack(spacing: 12) {
+                sourcesCard
+                VSplitView {
+                    rollsCard.frame(minHeight: 180)
+                    clipsCard.frame(minHeight: 140).padding(.top, 12)
+                }
             }
+            .frame(minWidth: 620)
+            .padding(.trailing, 6)
+            ScrollView { JobCard() }
+                .frame(minWidth: 300, idealWidth: 340, maxWidth: 400)
+                .padding(.leading, 6)
         }
         .foregroundStyle(.white)
         .font(t.font(12))
@@ -117,6 +124,8 @@ struct IngestView: View {
                         .help((r.importedReports + r.foundReports).joined(separator: "\n"))
                 }
                 .width(min: 60, ideal: 80)
+                TableColumn("LUT") { (r: IngestRoll) in RollLUTMenu(roll: r.roll) }
+                    .width(min: 70, ideal: 110)
                 TableColumn("Source") { (r: IngestRoll) in
                     Text((r.root as NSString).abbreviatingWithTildeInPath)
                         .lineLimit(1).truncationMode(.head).foregroundStyle(t.textMuted)
@@ -265,5 +274,210 @@ struct IngestBar: View {
         .font(t.font(12))
         .card(t)
         .padding(.horizontal, 20).padding(.vertical, 12)
+    }
+}
+
+/// Per-roll LUT override (EDIT / WEB), falling back to the job defaults.
+struct RollLUTMenu: View {
+    @Environment(IngestState.self) private var state
+    let roll: String
+
+    var body: some View {
+        Menu(state.rollLUTLabel(roll)) {
+            ForEach(["edit", "web"], id: \.self) { o in
+                Menu(o.uppercased()) {
+                    Button("Use job default") { state.setRollLUT(roll, output: o, value: nil) }
+                    Button("None (keep log)") { state.setRollLUT(roll, output: o, value: "none") }
+                    Button("Auto from camera gamma") { state.setRollLUT(roll, output: o, value: "auto") }
+                    if !state.lutFiles.isEmpty { Divider() }
+                    ForEach(state.lutFiles, id: \.self) { f in
+                        Button((f as NSString).lastPathComponent) { state.setRollLUT(roll, output: o, value: f) }
+                    }
+                }
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+    }
+}
+
+/// Folder field for the ingest app (choose / clear, shows the path).
+struct IngestFolderField: View {
+    @Environment(IngestState.self) private var state
+    let label: String
+    @Binding var path: String
+    var placeholder = "Choose a folder…"
+    var message = ""
+
+    var body: some View {
+        let t = state.theme
+        VStack(alignment: .leading, spacing: 5) {
+            Text(label.uppercased()).font(t.font(10, weight: .bold)).foregroundStyle(t.textMuted).kerning(0.8)
+            HStack(spacing: 8) {
+                Image(systemName: "folder").foregroundStyle(path.isEmpty ? t.textMuted : t.accent)
+                Text(path.isEmpty ? placeholder : (path as NSString).abbreviatingWithTildeInPath)
+                    .font(t.font(12)).foregroundStyle(path.isEmpty ? t.textMuted : .white)
+                    .lineLimit(1).truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .help(path)
+                if !path.isEmpty {
+                    Button { path = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain).foregroundStyle(t.textMuted)
+                }
+                Button("Choose…") { if let p = state.chooseFolder(message, start: path) { path = p } }
+                    .buttonStyle(AccentButtonStyle(theme: t, prominent: false))
+            }
+            .padding(.leading, 10).padding(.vertical, 4).padding(.trailing, 4)
+            .background(t.recessed, in: RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(t.border))
+        }
+    }
+}
+
+/// Right-hand job setup: where things go, what to make, LUTs, then Plan / Start.
+struct JobCard: View {
+    @Environment(IngestState.self) private var state
+
+    var body: some View {
+        @Bindable var state = state
+        let t = state.theme
+        VStack(alignment: .leading, spacing: 14) {
+            SectionTitle(text: "Job", symbol: "gearshape.2")
+            VStack(alignment: .leading, spacing: 6) {
+                Picker("", selection: $state.mode) {
+                    ForEach(IngestMode.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.radioGroup).labelsHidden()
+                Text(state.mode.detail).font(t.font(11)).foregroundStyle(t.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            IngestFolderField(label: "Project folder", path: $state.projectFolder,
+                              placeholder: "OCF/, TRANSCODES/, REPORTS/ go here",
+                              message: "Choose the project folder. It must not be on the source media.")
+            if state.mode.copies {
+                IngestFolderField(label: "Backup copy (optional)", path: $state.backupFolder,
+                                  placeholder: "Second verified copy of OCF/",
+                                  message: "Choose a second drive for a backup copy of the originals.")
+            }
+            if state.mode.transcodes {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("OUTPUTS").font(t.font(10, weight: .bold)).foregroundStyle(t.textMuted).kerning(0.8)
+                    Toggle("EDIT · ProRes 422 Proxy · 1920×1080", isOn: $state.outputEdit)
+                    Toggle("WEB · H.264 4–5 Mbps · 1920×1080", isOn: $state.outputWeb)
+                    Stepper("Parallel transcodes: \(state.transcodeWorkers)", value: $state.transcodeWorkers, in: 1...4)
+                        .help("How many ffmpeg encodes run at once. 2 keeps the Mac usable.")
+                    Toggle("Burn in clip name + timecode (WEB)", isOn: $state.burnIn)
+                        .disabled(!state.hasDrawtext)
+                        .help(state.hasDrawtext ? "" : "This ffmpeg build has no drawtext filter (needs libfreetype).")
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("LUTS").font(t.font(10, weight: .bold)).foregroundStyle(t.textMuted).kerning(0.8)
+                    IngestFolderField(label: "LUT library", path: $state.lutLibrary,
+                                      placeholder: "Folder of .cube files",
+                                      message: "Choose a folder of .cube LUTs.")
+                    lutPicker("EDIT LUT", selection: $state.lutEdit)
+                    lutPicker("WEB LUT", selection: $state.lutWeb)
+                    HStack {
+                        Text(state.cdlPath.isEmpty ? "No CDL look" : "CDL: " + (state.cdlPath as NSString).lastPathComponent)
+                            .foregroundStyle(state.cdlPath.isEmpty ? t.textMuted : .white).lineLimit(1)
+                        Spacer()
+                        if !state.cdlPath.isEmpty {
+                            Button("Clear") { state.cdlPath = "" }.buttonStyle(.borderless)
+                        }
+                        Button("CDL…") { state.chooseCDL() }
+                            .buttonStyle(AccentButtonStyle(theme: t, prominent: false))
+                    }
+                    Text("Per-roll overrides: LUT column in the Rolls table. Auto picks a library LUT from the camera's gamma (e.g. S-Log3).")
+                        .font(t.font(10)).foregroundStyle(t.textMuted).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Toggle("Also write camera reports", isOn: $state.cameraReportsWithJob)
+            HStack {
+                Button { state.checkPlan() } label: { Label("Check Plan…", systemImage: "checklist") }
+                    .buttonStyle(AccentButtonStyle(theme: t))
+                    .disabled(!state.canPlan)
+                    .help("Read-only preflight: space, conflicts, LUTs. Start from the plan sheet.")
+                Spacer()
+            }
+        }
+        .font(t.font(12))
+        .card(t)
+        .sheet(isPresented: $state.showPlan) { PlanSheet() }
+    }
+
+    private func lutPicker(_ label: String, selection: Binding<String>) -> some View {
+        Picker(label, selection: selection) {
+            Text("None (keep log)").tag("none")
+            Text("Auto from camera gamma").tag("auto")
+            if !state.lutFiles.isEmpty { Divider() }
+            ForEach(state.lutFiles, id: \.self) { Text(($0 as NSString).lastPathComponent).tag($0) }
+            if !["none", "auto"].contains(selection.wrappedValue) && !state.lutFiles.contains(selection.wrappedValue) {
+                Text((selection.wrappedValue as NSString).lastPathComponent).tag(selection.wrappedValue)
+            }
+        }
+    }
+}
+
+struct PlanSheet: View {
+    @Environment(IngestState.self) private var state
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        let t = state.theme
+        let plan = state.plan
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                SectionTitle(text: "Plan · \(state.mode.title)", symbol: "checklist")
+                Spacer()
+                if let plan {
+                    Text(plan.ok ? "Ready" : "Blocked")
+                        .font(t.font(12, weight: .bold))
+                        .foregroundStyle(plan.ok ? t.success : Color(hex: 0xFF6B63))
+                }
+            }
+            if let plan {
+                if state.mode.copies {
+                    Text("\(plan.files) files · \(IngestFormat.bytes(plan.bytes)) to copy and verify (\(plan.hash)) to "
+                         + ([state.projectFolder] + (state.backupFolder.isEmpty ? [] : [state.backupFolder]))
+                            .map { ($0 as NSString).abbreviatingWithTildeInPath }.joined(separator: " and "))
+                        .foregroundStyle(t.textMuted)
+                }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(plan.errors, id: \.self) { e in
+                            Label(e, systemImage: "xmark.octagon.fill").foregroundStyle(Color(hex: 0xFF6B63))
+                        }
+                        ForEach(plan.warnings, id: \.self) { w in
+                            Label(w, systemImage: "exclamationmark.triangle.fill").foregroundStyle(t.highlight)
+                        }
+                        ForEach(plan.rolls) { r in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(r.label).font(t.font(12, weight: .bold))
+                                Text(r.detail).foregroundStyle(t.textMuted)
+                                if !r.luts.isEmpty { Text("LUT  " + r.luts).foregroundStyle(t.textMuted) }
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                Text("Source media is only read. Existing files are never overwritten: identical ones are skipped, different ones are flagged.")
+                    .font(t.font(11)).foregroundStyle(t.textMuted)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(AccentButtonStyle(theme: t, prominent: false))
+                    .keyboardShortcut(.cancelAction)
+                Button { state.startJob() } label: { Label("Start", systemImage: "play.fill") }
+                    .buttonStyle(AccentButtonStyle(theme: t))
+                    .disabled(!(plan?.ok ?? false))
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .font(t.font(12))
+        .padding(20)
+        .frame(minWidth: 640, minHeight: 440)
+        .background(t.background)
+        .foregroundStyle(.white)
     }
 }

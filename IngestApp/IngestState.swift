@@ -24,6 +24,27 @@ final class IngestState {
     var dayStartHour = 0 { didSet { save() } }
     var reportFolder = "" { didSet { save() } }
 
+    // Job (copy / transcode)
+    var mode: IngestMode = .offloadTranscode { didSet { save() } }
+    var projectFolder = "" { didSet { save() } }
+    var backupFolder = "" { didSet { save() } }
+    var outputEdit = true { didSet { save() } }
+    var outputWeb = true { didSet { save() } }
+    var lutLibrary = "" { didSet { save(); refreshLUTLibrary() } }
+    var lutFiles: [String] = []
+    var lutEdit = "none" { didSet { save() } }   // "none" | "auto" | path
+    var lutWeb = "none" { didSet { save() } }
+    var cdlPath = ""
+    var rollLUTs: [String: [String: String]] = [:]   // roll name -> output -> value
+    var burnIn = false
+    var cameraReportsWithJob = true { didSet { save() } }
+    var transcodeWorkers = 2 { didSet { save() } }
+    var plan: IngestPlan?
+    var showPlan = false
+    var lastSummary: [String: Any]?
+    var capabilities: [String: Any] = [:]
+    var jobRunning = false
+
     var busy = false
     var progress = ""
     var log: [LogLine] = []
@@ -40,7 +61,19 @@ final class IngestState {
         if d.object(forKey: "thumbnails") != nil { thumbnails = d.bool(forKey: "thumbnails") }
         dayStartHour = d.integer(forKey: "dayStartHour")
         reportFolder = d.string(forKey: "reportFolder") ?? ""
+        mode = IngestMode(rawValue: d.string(forKey: "mode") ?? "") ?? .offloadTranscode
+        projectFolder = d.string(forKey: "projectFolder") ?? ""
+        backupFolder = d.string(forKey: "backupFolder") ?? ""
+        if d.object(forKey: "outputEdit") != nil { outputEdit = d.bool(forKey: "outputEdit") }
+        if d.object(forKey: "outputWeb") != nil { outputWeb = d.bool(forKey: "outputWeb") }
+        lutLibrary = d.string(forKey: "lutLibrary") ?? ""
+        lutEdit = d.string(forKey: "lutEdit") ?? "none"
+        lutWeb = d.string(forKey: "lutWeb") ?? "none"
+        if d.object(forKey: "cameraReportsWithJob") != nil { cameraReportsWithJob = d.bool(forKey: "cameraReportsWithJob") }
+        if d.integer(forKey: "transcodeWorkers") > 0 { transcodeWorkers = d.integer(forKey: "transcodeWorkers") }
         loading = false
+        refreshLUTLibrary()
+        loadCapabilities()
     }
 
     private func save() {
@@ -50,6 +83,16 @@ final class IngestState {
         d.set(thumbnails, forKey: "thumbnails")
         d.set(dayStartHour, forKey: "dayStartHour")
         d.set(reportFolder, forKey: "reportFolder")
+        d.set(mode.rawValue, forKey: "mode")
+        d.set(projectFolder, forKey: "projectFolder")
+        d.set(backupFolder, forKey: "backupFolder")
+        d.set(outputEdit, forKey: "outputEdit")
+        d.set(outputWeb, forKey: "outputWeb")
+        d.set(lutLibrary, forKey: "lutLibrary")
+        d.set(lutEdit, forKey: "lutEdit")
+        d.set(lutWeb, forKey: "lutWeb")
+        d.set(cameraReportsWithJob, forKey: "cameraReportsWithJob")
+        d.set(transcodeWorkers, forKey: "transcodeWorkers")
     }
 
     // MARK: - Sources
@@ -138,7 +181,7 @@ final class IngestState {
 
     // MARK: - Helpers
 
-    private func runWorker(_ args: [String], stdin: Data? = nil, label: String,
+    func runWorker(_ args: [String], stdin: Data? = nil, label: String,
                            then: @escaping ([String: Any]) -> Void) {
         busy = true
         progress = ""
@@ -170,7 +213,9 @@ final class IngestState {
             appendLog(level == "error" ? .error : level == "warning" ? .warning : .info, "\(title): \(message)")
             alert = AlertMessage(level: level, title: title, message: message)
         case .progress(let stage, let done, let total):
-            let what = ["walk": "Walking folders", "probe": "Reading clip metadata", "thumbs": "Making thumbnails"][stage] ?? stage
+            let what = ["walk": "Walking folders", "probe": "Reading clip metadata", "thumbs": "Making thumbnails",
+                        "copy": "Copying + verifying files", "transcode": "Transcodes",
+                        "verify": "Verifying MHL"][stage] ?? stage
             progress = total.map { "\(what) \(done)/\($0)" } ?? "\(what)… \(done)"
         case .previews, .result: break
         }
@@ -194,7 +239,7 @@ final class IngestState {
         if selection.isEmpty, let first = rolls.first { selection = [first.id] }
     }
 
-    private func scanJSON(onlySelected: Bool = false) -> Data? {
+    func scanJSON(onlySelected: Bool = false) -> Data? {
         let picked = onlySelected && !selection.isEmpty ? rolls.filter { selection.contains($0.id) } : rolls
         guard !picked.isEmpty else { return nil }
         let payload: [String: Any] = ["sources": scanSources, "rolls": picked.map(\.edited)]

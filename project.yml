@@ -82,6 +82,10 @@ targetTemplates:
       - name: Embed Python Runtime
         script: exec "$SRCROOT/scripts/embed_python_runtime.sh"
         basedOnDependencyAnalysis: false
+      # LGPL ffmpeg/ffprobe from scripts/build_ffmpeg.sh -> Contents/Helpers (skipped if not built)
+      - name: Embed ffmpeg
+        script: exec "$SRCROOT/scripts/embed_ffmpeg.sh"
+        basedOnDependencyAnalysis: false
 
 targets:
   SuperJoy Slating Workstation:

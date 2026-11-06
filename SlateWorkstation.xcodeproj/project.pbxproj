@@ -55,6 +55,7 @@
 		BF5D5CE532D47EF2FE4173E2 /* sj_Slates From Spreadsheet_Template_006.aep in Resources */ = {isa = PBXBuildFile; fileRef = C77981A678E829BFB61BD3EB /* sj_Slates From Spreadsheet_Template_006.aep */; };
 		C0F4EC1098F225FA360B5CC4 /* SlateApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED381BF502339D5E129054E9 /* SlateApp.swift */; };
 		C7B1BBC716644BF3288DCF07 /* PythonWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08E2A1AEF6AC420263BBE745 /* PythonWorker.swift */; };
+		C910214836E50DA208D33FBD /* IngestJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F2EB7F3DE7510A73576A02B /* IngestJob.swift */; };
 		CD65C60F8F475F30ABE9B476 /* readme.txt in Resources */ = {isa = PBXBuildFile; fileRef = 1A875CF3950ED66F53FB3CCA /* readme.txt */; };
 		CD8B7C5527807EAC2B25B8C6 /* MarryAndUnslateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 533F3BBB0DAE4AF3F7D56B68 /* MarryAndUnslateViews.swift */; };
 		E088DA6919F7817E77C44B11 /* slate_worker.py in Resources */ = {isa = PBXBuildFile; fileRef = D5F7B227904C842EC402E01C /* slate_worker.py */; };
@@ -75,6 +76,7 @@
 		40A17FE8B5DE45DCE7BE880C /* IngestApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IngestApp.swift; sourceTree = "<group>"; };
 		533F3BBB0DAE4AF3F7D56B68 /* MarryAndUnslateViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarryAndUnslateViews.swift; sourceTree = "<group>"; };
 		5D63FA7FF27408C806337EA6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		5F2EB7F3DE7510A73576A02B /* IngestJob.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IngestJob.swift; sourceTree = "<group>"; };
 		95E6050992D1A71773C6DF44 /* presets */ = {isa = PBXFileReference; lastKnownFileType = folder; name = presets; path = engine/presets; sourceTree = SOURCE_ROOT; };
 		96A34CD7DACB51EE2C2F0643 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		9D6D70E85B1CE6376ACAE414 /* sj_Slates From Spreadsheet_Template_005.aep */ = {isa = PBXFileReference; path = "sj_Slates From Spreadsheet_Template_005.aep"; sourceTree = "<group>"; };
@@ -168,6 +170,7 @@
 			isa = PBXGroup;
 			children = (
 				40A17FE8B5DE45DCE7BE880C /* IngestApp.swift */,
+				5F2EB7F3DE7510A73576A02B /* IngestJob.swift */,
 				A5665226237C9A239FC8EC69 /* IngestModels.swift */,
 				C35F15FCA85C69A958E4E7C6 /* IngestState.swift */,
 				1F5869BEEC47C4DF58EAB84D /* IngestView.swift */,
@@ -206,6 +209,7 @@
 				3BA4347523F503505B2F1200 /* Sources */,
 				0E29D6F643ADDE16293207F5 /* Resources */,
 				475E86FB8A0D06D9FAC5954A /* Embed Python Runtime */,
+				8B8F384E6B6A650640C845BC /* Embed ffmpeg */,
 			);
 			buildRules = (
 			);
@@ -379,6 +383,25 @@
 			shellPath = /bin/sh;
 			shellScript = "exec \"$SRCROOT/scripts/embed_python_runtime.sh\"";
 		};
+		8B8F384E6B6A650640C845BC /* Embed ffmpeg */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed ffmpeg";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "exec \"$SRCROOT/scripts/embed_ffmpeg.sh\"";
+		};
 		FB66DC64C9063D27461F1DC8 /* Embed Python Runtime */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -406,6 +429,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6B0F773EE909073D1415CFE5 /* IngestApp.swift in Sources */,
+				C910214836E50DA208D33FBD /* IngestJob.swift in Sources */,
 				3934E7FCC99B13075987B005 /* IngestModels.swift in Sources */,
 				15E4642C4435AA5F41E6D12C /* IngestState.swift in Sources */,
 				101A622D4BCAA71BB21B7015 /* IngestView.swift in Sources */,

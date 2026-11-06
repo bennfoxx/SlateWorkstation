@@ -255,6 +255,30 @@ Revised phases: 1 scanner + preview + camera reports (**in progress**) → 2 ver
 3 ffmpeg transcodes (EDIT/WEB above) + bundled ffmpeg → 4 LUTs → 5 Premiere bins/proxies +
 AME/REDline for R3D → 6 Premiere organised-copy → 7 Silverstack interop / dual destinations.
 
+## Status & roadmap (updated 2026-11-06)
+
+Legend: ✅ built + tested on fixtures · 🟡 code in place, needs real media / a decision · ⬜ not started.
+Real Sony / RED cards and a network share are still needed to validate everything marked ✅.
+
+| # | Area | Status | Where | What's left |
+|---|---|---|---|---|
+| 1 | Scanner (Sony M4ROOT/XDROOT, RED RDM/RDC, loose folders), Date/Cam/Roll proposals | ✅ | `ingest/scanner.py`, `sony.py` | Tune against real cards (Venice X-OCN, FX3 vs FX6 XML, RED naming variants) |
+| 1 | Camera report import (CSV/TSV/XLSX) + generation (HTML/CSV + thumbnails) | ✅ | `ingest/camreport.py` | Real AC / Silverstack exports to tune header matching; PDF export |
+| 2 | Verified offload: uncached read, hash-while-copy, fsync, uncached read-back, no-overwrite publish, conflicts flagged, stale partials replaced, dual destination | ✅ | `ingest/offload.py`, `safefs.py` | Throughput tuning on real drives / SMB; per-device parallelism |
+| 2 | ASC MHL v2 writer + chain; MHL v1/v2 reader + verify | 🟡 | `ingest/mhl.py` | Validate output with the official `ascmhl verify`; xxh64 needs the `xxhash` module in the embedded Python (md5 until then) |
+| 2 | Preflight plan: space, dest-inside-source, duplicate roll names, FAT32 4 GB, case collisions, writability | ✅ | `ingest/pipeline.py` `plan()` | — |
+| 2 | Journal (SQLite) + JSON/CSV ingest report | ✅ | `pipeline.py` | Resume UI ("finish last job") |
+| 3 | Transcodes: EDIT ProRes 422 Proxy 1080p, WEB H.264 4/5 Mbps 1080p, TC + reel name kept, VideoToolbox with software fallback, output check | ✅ | `ingest/transcode.py` | Check relink in Premiere with real footage; audio channel layouts from real cards |
+| 3 | Watchdog (stall / memory / wall-time / Stop), bounded pools, low priority, overlap copy→transcode | ✅ | `transcode.py`, `pipeline.py` | Load test with 1,000+ real clips |
+| 3 | Modes: transcode only / copy only / copy + transcode | ✅ | `pipeline.py`, `IngestApp/` | — |
+| 3 | Bundled LGPL ffmpeg | 🟡 | `scripts/build_ffmpeg.sh`, `embed_ffmpeg.sh` | Download + verify source, pin SHA-256, build (needs your OK to download); static freetype for burn-ins |
+| 4 | LUTs: default → cam → roll → clip cascade per output, auto from gamma, CDL + LUT bake, LUT recorded in report | ✅ | `ingest/luts.py` | Your show LUTs; per-clip overrides in the UI (engine supports it) |
+| 5 | R3D transcodes / thumbnails / metadata (REDline or AME) | ⬜ | `ingest/rawbackends.py` (stub; R3D reported as "needs_raw_backend") | Install REDline or pick AME; R3D samples |
+| 5 | Premiere: bins by Date/Cam/Roll, attach EDIT as proxies | ⬜ | — | Confirm Premiere 2026 scripting surface (ExtendScript vs UXP) |
+| 6 | Premiere project → organised copy + relink | ⬜ | — | A sample .prproj |
+| 7 | Silverstack interop: verify a Silverstack offload against its MHL, then transcode only | 🟡 | `mhl.verify` + `verify-mhl` command | UI entry point; real Silverstack MHL samples |
+| — | Release: Ingest app in install/notarize scripts, own icon | ⬜ | — | — |
+
 ## Open questions
 
 - Which network workspace (SMB NAS, LucidLink, Suite, NEXIS)? Each has different
